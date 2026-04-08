@@ -1,0 +1,47 @@
+#legaciti-manual-sync:disabled {
+    opacity: 0.5;
+}
+
+.legaciti-person-avatar {
+    max-width: 200px;
+    border-radius: 50%;
+    float: right;
+    margin: 0 0 20px 20px;
+}
+
+.legaciti-person-profile h1 {
+    margin-bottom: 0.2em;
+}
+
+.legaciti-person-title {
+    font-size: 1.1em;
+    color: #666;
+    margin-top: 0;
+}
+
+.legaciti-person-publications {
+    list-style: none;
+    padding: 0;
+}
+
+.legaciti-person-publications li {
+    padding: 8px 0;
+    border-bottom: 1px solid #eee;
+}
+
+.legaciti-pub-date,
+.legaciti-pub-journal {
+    color: #888;
+    font-size: 0.9em;
+    margin-left: 8px;
+}
+
+.legaciti-pub-authors ul {
+    list-style: none;
+    padding: 0;
+}
+
+.legaciti-author-role {
+    color: #888;
+    font-size: 0.9em;
+}
