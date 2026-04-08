@@ -1,0 +1,1 @@
+# legaciti-for-wp
