@@ -77,6 +77,21 @@ final class SettingsPage
             page: 'legaciti-settings',
             section: 'legaciti_api_section',
         );
+
+        add_settings_section(
+            id: 'legaciti_uninstall_section',
+            title: __('Uninstall', 'legaciti-for-wp'),
+            callback: '__return_null',
+            page: 'legaciti-settings',
+        );
+
+        add_settings_field(
+            id: 'legaciti_remove_on_uninstall',
+            title: __('Remove Data on Uninstall', 'legaciti-for-wp'),
+            callback: [$this, 'renderRemoveOnUninstallField'],
+            page: 'legaciti-settings',
+            section: 'legaciti_uninstall_section',
+        );
     }
 
     public function enqueueAssets(string $hook): void
@@ -201,6 +216,17 @@ final class SettingsPage
         echo '<p class="description">People profile URLs. Empty = <code>/asoares</code>, set "people" = <code>/people/asoares</code>. Requires flush of rewrite rules after change.</p>';
     }
 
+    public function renderRemoveOnUninstallField(): void
+    {
+        $settings = get_option('legaciti_settings', []);
+        $checked = checked($settings['remove_on_uninstall'] ?? false, true, false);
+        printf(
+            '<label><input type="checkbox" name="legaciti_settings[remove_on_uninstall]" value="1" %s /> %s</label>',
+            $checked,
+            esc_html__('Delete all tables and settings when the plugin is uninstalled.', 'legaciti-for-wp')
+        );
+    }
+
     public function sanitizeSettings(array $input): array
     {
         return [
@@ -210,6 +236,7 @@ final class SettingsPage
                 ? $input['sync_frequency']
                 : 'daily',
             'url_prefix' => sanitize_text_field($input['url_prefix'] ?? ''),
+            'remove_on_uninstall' => ! empty($input['remove_on_uninstall']),
             'last_sync' => get_option('legaciti_settings', [])['last_sync'] ?? '',
         ];
     }
