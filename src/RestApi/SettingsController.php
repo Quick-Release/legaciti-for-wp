@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace LegacitiForWp\RestApi;
 
+use LegacitiForWp\Api\Client;
 use LegacitiForWp\Api\SyncService;
 
 final class SettingsController
@@ -12,6 +13,7 @@ final class SettingsController
 
     public function __construct(
         private readonly SyncService $syncService,
+        private readonly Client $client,
     ) {
     }
 
@@ -49,6 +51,26 @@ final class SettingsController
                         'sanitize_callback' => function ($val): bool {
                             return ! empty($val);
                         },
+                    ],
+                ],
+            ],
+        ]);
+
+        register_rest_route(self::NAMESPACE, '/settings/validate-credentials', [
+            [
+                'methods' => 'POST',
+                'callback' => [$this, 'validateCredentials'],
+                'permission_callback' => fn(): bool => current_user_can('manage_options'),
+                'args' => [
+                    'api_base_url' => [
+                        'required' => true,
+                        'type' => 'string',
+                        'sanitize_callback' => 'esc_url_raw',
+                    ],
+                    'api_key' => [
+                        'required' => true,
+                        'type' => 'string',
+                        'sanitize_callback' => 'sanitize_text_field',
                     ],
                 ],
             ],
@@ -94,6 +116,16 @@ final class SettingsController
         update_option('legaciti_settings', $updated);
 
         return new \WP_REST_Response(['saved' => true]);
+    }
+
+    public function validateCredentials(\WP_REST_Request $request): \WP_REST_Response
+    {
+        $base = (string) $request->get_param('api_base_url');
+        $key = (string) $request->get_param('api_key');
+
+        $result = $this->client->validateCredentials($base, $key);
+
+        return new \WP_REST_Response($result);
     }
 
     public function triggerSync(): \WP_REST_Response

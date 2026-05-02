@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace LegacitiForWp;
 
+use LegacitiForWp\Admin\BrowserSyncDev;
 use LegacitiForWp\Admin\SettingsPage;
 use LegacitiForWp\Api\Client;
 use LegacitiForWp\Api\SyncService;
@@ -56,13 +57,15 @@ final class Plugin
         $router = new Router($personRepo, $publicationRepo);
 
         $settingsPage = new SettingsPage();
+        $browserSyncDev = new BrowserSyncDev();
         $peopleController = new PeopleController($personRepo, $publicationRepo, $relationRepo);
         $publicationsController = new PublicationsController($publicationRepo, $personRepo, $relationRepo);
         $dashboardController = new DashboardController($personRepo, $publicationRepo);
-        $settingsController = new SettingsController($syncService);
+        $settingsController = new SettingsController($syncService, $client);
 
         add_action('plugins_loaded', [$cronManager, 'register']);
         add_action('plugins_loaded', [$settingsPage, 'register']);
+        add_action('plugins_loaded', [$browserSyncDev, 'register']);
         add_action('plugins_loaded', [$router, 'register']);
         add_action('rest_api_init', [$peopleController, 'registerRoutes']);
         add_action('rest_api_init', [$publicationsController, 'registerRoutes']);

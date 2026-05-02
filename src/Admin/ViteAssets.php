@@ -6,191 +6,75 @@ namespace LegacitiForWp\Admin;
 
 final class ViteAssets
 {
+    /** Built by `pnpm run build` (IIFE bundles — classic scripts, no ES module chunks). */
+    private const ENTRY_JS = [
+        'dashboard' => 'assets/legaciti-dashboard.js',
+        'people' => 'assets/legaciti-people.js',
+        'settings' => 'assets/legaciti-settings.js',
+    ];
+
+    private const ENTRY_CSS = [
+        'dashboard' => 'assets/legaciti-dashboard.css',
+        'people' => 'assets/legaciti-people.css',
+        'settings' => 'assets/legaciti-settings.css',
+    ];
+
     /**
-     * Registers Vite chunks (shared + entry) and enqueues the entry script handle.
-     * Style chunks from the manifest are enqueued with derived handles.
+     * @param list<string> $scriptDeps WordPress scripts that must run first (e.g. wp-api-fetch for REST nonce).
      *
-     * @return bool True when the manifest and entry exist and scripts were registered
+     * @return bool True when bundle files exist and the script was registered
      */
     public static function enqueueEntry(
         string $distPath,
         string $distUrl,
         string $scriptHandle,
-        string $entryName
+        string $entryName,
+        array $scriptDeps = ['wp-api-fetch']
     ): bool {
-        $manifest = self::loadManifest($distPath);
-        if ($manifest === null) {
+        if (! isset(self::ENTRY_JS[$entryName])) {
             return false;
         }
 
-        $entryKey = self::findEntryKey($manifest, $entryName);
-        if ($entryKey === null) {
+        $jsRelative = self::ENTRY_JS[$entryName];
+        $jsAbsolute = $distPath . $jsRelative;
+
+        if (! is_readable($jsAbsolute)) {
             return false;
         }
 
-        $ordered = self::orderedChunks($manifest, $entryKey);
-        if ($ordered['js'] === []) {
-            return false;
-        }
-
-        $prevHandle = null;
-        $jsFiles = $ordered['js'];
-        $lastIndex = count($jsFiles) - 1;
-
-        foreach ($jsFiles as $index => $file) {
-            $isLast = $index === $lastIndex;
-            $handle = $isLast ? $scriptHandle : $scriptHandle . '-vite-' . $index;
-            $deps = $prevHandle !== null ? [$prevHandle] : [];
-
-            wp_register_script(
-                $handle,
-                $distUrl . $file,
-                $deps,
-                self::fileVersion($distPath . $file),
-                true
-            );
-            $prevHandle = $handle;
-        }
-
+        wp_register_script(
+            $scriptHandle,
+            $distUrl . $jsRelative,
+            $scriptDeps,
+            self::fileVersion($jsAbsolute),
+            true
+        );
         wp_enqueue_script($scriptHandle);
 
-        $cssIndex = 0;
-        foreach ($ordered['css'] as $file) {
-            wp_enqueue_style(
-                $scriptHandle . '-css-' . $cssIndex,
-                $distUrl . $file,
-                [],
-                self::fileVersion($distPath . $file)
-            );
-            ++$cssIndex;
+        wp_localize_script(
+            $scriptHandle,
+            'wpApiSettings',
+            [
+                'root' => esc_url_raw(rest_url()),
+                'nonce' => wp_create_nonce('wp_rest'),
+                'nonceEndpoint' => admin_url('admin-ajax.php?action=rest-nonce'),
+            ]
+        );
+
+        $cssRelative = self::ENTRY_CSS[$entryName] ?? null;
+        if ($cssRelative !== null) {
+            $cssAbsolute = $distPath . $cssRelative;
+            if (is_readable($cssAbsolute)) {
+                wp_enqueue_style(
+                    $scriptHandle . '-bundle-css',
+                    $distUrl . $cssRelative,
+                    [],
+                    self::fileVersion($cssAbsolute)
+                );
+            }
         }
 
         return true;
-    }
-
-    /**
-     * @return array<string, mixed>|null
-     */
-    private static function loadManifest(string $distPath): ?array
-    {
-        $candidates = [
-            $distPath . 'manifest.json',
-            $distPath . '.vite' . DIRECTORY_SEPARATOR . 'manifest.json',
-        ];
-
-        foreach ($candidates as $path) {
-            if (! is_readable($path)) {
-                continue;
-            }
-
-            $json = file_get_contents($path);
-            if ($json === false) {
-                continue;
-            }
-
-            $data = json_decode($json, true);
-            if (is_array($data)) {
-                return $data;
-            }
-        }
-
-        return null;
-    }
-
-    /**
-     * @param array<string, mixed> $manifest
-     */
-    private static function findEntryKey(array $manifest, string $entryName): ?string
-    {
-        foreach ($manifest as $key => $chunk) {
-            if (! is_array($chunk)) {
-                continue;
-            }
-
-            $isEntry = ! empty($chunk['isEntry']);
-            $name = isset($chunk['name']) && is_string($chunk['name']) ? $chunk['name'] : '';
-
-            if ($isEntry && $name === $entryName) {
-                return (string) $key;
-            }
-        }
-
-        return null;
-    }
-
-    /**
-     * @param array<string, mixed> $manifest
-     * @return array{js: list<string>, css: list<string>}
-     */
-    private static function orderedChunks(array $manifest, string $entryKey): array
-    {
-        $visited = [];
-        $js = [];
-        $css = [];
-
-        self::walkChunk($manifest, $entryKey, $visited, $js, $css);
-
-        return [
-            'js' => $js,
-            'css' => self::uniquePreserveOrder($css),
-        ];
-    }
-
-    /**
-     * @param array<string, mixed> $manifest
-     * @param array<string, true> $visited
-     * @param list<string> $js
-     * @param list<string> $css
-     */
-    private static function walkChunk(array $manifest, string $key, array &$visited, array &$js, array &$css): void
-    {
-        if (isset($visited[$key])) {
-            return;
-        }
-
-        $visited[$key] = true;
-
-        $chunk = $manifest[$key] ?? null;
-        if (! is_array($chunk)) {
-            return;
-        }
-
-        foreach ($chunk['imports'] ?? [] as $importKey) {
-            if (is_string($importKey)) {
-                self::walkChunk($manifest, $importKey, $visited, $js, $css);
-            }
-        }
-
-        if (! empty($chunk['file']) && is_string($chunk['file'])) {
-            $js[] = $chunk['file'];
-        }
-
-        foreach ($chunk['css'] ?? [] as $c) {
-            if (is_string($c)) {
-                $css[] = $c;
-            }
-        }
-    }
-
-    /**
-     * @param list<string> $items
-     * @return list<string>
-     */
-    private static function uniquePreserveOrder(array $items): array
-    {
-        $seen = [];
-        $out = [];
-
-        foreach ($items as $item) {
-            if (isset($seen[$item])) {
-                continue;
-            }
-
-            $seen[$item] = true;
-            $out[] = $item;
-        }
-
-        return $out;
     }
 
     private static function fileVersion(string $absolutePath): string

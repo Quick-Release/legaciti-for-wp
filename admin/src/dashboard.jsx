@@ -1,6 +1,7 @@
+import '@wordpress/components/build-style/style.css';
 import { render, useState, useEffect } from '@wordpress/element';
 import { Card, CardBody, CardHeader, Spinner, Flex, FlexItem, Notice } from '@wordpress/components';
-import apiFetch from '@wordpress/api-fetch';
+import apiFetch from './setup-api-fetch';
 import StatCard from './components/StatCard';
 
 function DashboardApp() {

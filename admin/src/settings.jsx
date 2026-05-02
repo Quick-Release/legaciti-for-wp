@@ -1,3 +1,4 @@
+import '@wordpress/components/build-style/style.css';
 import { render, useState, useEffect } from '@wordpress/element';
 import {
   Card,
@@ -12,7 +13,7 @@ import {
   Flex,
   FlexItem,
 } from '@wordpress/components';
-import apiFetch from '@wordpress/api-fetch';
+import apiFetch from './setup-api-fetch';
 
 function SettingsApp() {
   const [settings, setSettings] = useState(null);
@@ -21,6 +22,8 @@ function SettingsApp() {
   const [syncing, setSyncing] = useState(false);
   const [saveNotice, setSaveNotice] = useState(null);
   const [syncResult, setSyncResult] = useState(null);
+  const [checkingKey, setCheckingKey] = useState(false);
+  const [keyCheck, setKeyCheck] = useState(null);
 
   useEffect(() => {
     apiFetch({ path: '/legaciti/v1/settings' })
@@ -60,6 +63,29 @@ function SettingsApp() {
       });
   };
 
+  const handleCheckKey = () => {
+    setCheckingKey(true);
+    setKeyCheck(null);
+
+    apiFetch({
+      path: '/legaciti/v1/settings/validate-credentials',
+      method: 'POST',
+      data: {
+        api_base_url: settings.api_base_url,
+        api_key: settings.api_key,
+      },
+    })
+      .then((res) => {
+        setKeyCheck({ valid: res.valid, message: res.message || '' });
+      })
+      .catch((err) => {
+        setKeyCheck({ valid: false, message: err.message || 'Validation request failed.' });
+      })
+      .finally(() => {
+        setCheckingKey(false);
+      });
+  };
+
   const handleSync = () => {
     setSyncing(true);
     setSyncResult(null);
@@ -88,6 +114,9 @@ function SettingsApp() {
   }
 
   const updateSetting = (key, value) => {
+    if (key === 'api_base_url' || key === 'api_key') {
+      setKeyCheck(null);
+    }
     setSettings((prev) => ({ ...prev, [key]: value }));
   };
 
@@ -110,13 +139,39 @@ function SettingsApp() {
             onChange={(val) => updateSetting('api_base_url', val)}
             placeholder="https://api.legaciti.org"
           />
-          <TextControl
-            label="API Key"
-            type="password"
-            value={settings.api_key}
-            onChange={(val) => updateSetting('api_key', val)}
-            autoComplete="off"
-          />
+          <Flex align="flex-end" gap={3} wrap>
+            <FlexItem style={{ flex: '1 1 240px', minWidth: 0 }}>
+              <TextControl
+                label="API Key"
+                type="password"
+                value={settings.api_key}
+                onChange={(val) => updateSetting('api_key', val)}
+                autoComplete="off"
+                help="Use Check to verify the key against the API before saving."
+              />
+            </FlexItem>
+            <FlexItem>
+              <Button
+                variant="secondary"
+                onClick={handleCheckKey}
+                isBusy={checkingKey}
+                disabled={checkingKey}
+              >
+                Check
+              </Button>
+            </FlexItem>
+          </Flex>
+          {keyCheck && (
+            <div style={{ marginTop: '12px' }}>
+              <Notice
+                status={keyCheck.valid ? 'success' : 'error'}
+                isDismissible
+                onRemove={() => setKeyCheck(null)}
+              >
+                {keyCheck.message}
+              </Notice>
+            </div>
+          )}
           <SelectControl
             label="Sync Frequency"
             value={settings.sync_frequency}

@@ -54,55 +54,89 @@ final class SettingsPage
 
     public function renderDashboard(): void
     {
-        echo '<div id="legaciti-dashboard" class="wrap"></div>';
+        echo '<div class="wrap">';
+        echo '<p><strong>' . esc_html__('Hello world — Dashboard', 'legaciti-for-wp') . '</strong></p>';
+        echo '<div id="legaciti-dashboard"></div>';
+        echo '</div>';
     }
 
     public function renderPeople(): void
     {
-        echo '<div id="legaciti-people" class="wrap"></div>';
+        echo '<div class="wrap">';
+        echo '<p><strong>' . esc_html__('Hello world — People', 'legaciti-for-wp') . '</strong></p>';
+        echo '<div id="legaciti-people"></div>';
+        echo '</div>';
     }
 
     public function renderSettings(): void
     {
-        echo '<div id="legaciti-settings" class="wrap"></div>';
+        echo '<div class="wrap">';
+        echo '<p><strong>' . esc_html__('Hello world — Settings', 'legaciti-for-wp') . '</strong></p>';
+        echo '<div id="legaciti-settings"></div>';
+        echo '</div>';
     }
 
     public function enqueueAssets(string $hook): void
     {
-        $screens = [
-            'toplevel_page_legaciti-dashboard',
-            'legaciti_page_legaciti-people',
-            'legaciti_page_legaciti-settings',
+        if (! current_user_can('manage_options')) {
+            return;
+        }
+
+        // Match `admin.php?page=legaciti-*` — reliable across WP versions (hook suffix varies).
+        $page = isset($_GET['page']) && is_string($_GET['page']) ? sanitize_text_field(wp_unslash($_GET['page'])) : '';
+
+        /** @var array<string, string> $pageToEntry menu slug => vite entry name */
+        $pageToEntry = [
+            'legaciti-dashboard' => 'dashboard',
+            'legaciti-people' => 'people',
+            'legaciti-settings' => 'settings',
         ];
 
-        if (! in_array($hook, $screens, true)) {
+        if (! isset($pageToEntry[$page])) {
             return;
+        }
+
+        $entryName = $pageToEntry[$page];
+
+        if (wp_style_is('wp-components', 'registered')) {
+            wp_enqueue_style('wp-components');
         }
 
         $distUrl = plugins_url('assets/dist/', LEGACITI_PLUGIN_FILE);
         $distPath = LEGACITI_PLUGIN_DIR . 'assets/dist/';
 
-        if (str_ends_with($hook, 'legaciti-dashboard')) {
-            ViteAssets::enqueueEntry($distPath, $distUrl, 'legaciti-dashboard', 'dashboard');
+        $scriptDeps = wp_script_is('wp-api-fetch', 'registered') ? ['wp-api-fetch'] : [];
+
+        $handle = 'legaciti-' . $entryName;
+        $enqueued = ViteAssets::enqueueEntry($distPath, $distUrl, $handle, $entryName, $scriptDeps);
+
+        if (! $enqueued) {
+            add_action(
+                'admin_notices',
+                static function (): void {
+                    echo '<div class="notice notice-error"><p>';
+                    echo esc_html__(
+                        'Legaciti: admin assets are missing. From the plugin folder, run: cd admin && pnpm install && pnpm run build',
+                        'legaciti-for-wp'
+                    );
+                    echo '</p></div>';
+                }
+            );
+
+            return;
         }
 
-        if (str_ends_with($hook, 'legaciti-people')) {
-            if (ViteAssets::enqueueEntry($distPath, $distUrl, 'legaciti-people', 'people')) {
-                $settings = get_option('legaciti_settings', []);
-                $prefix = trim((string) ($settings['url_prefix'] ?? ''), '/');
-                wp_localize_script(
-                    handle: 'legaciti-people',
-                    object_name: 'legacitiPeopleScreen',
-                    data: [
-                        'homeUrl' => untrailingslashit(home_url()),
-                        'urlPrefix' => $prefix,
-                    ],
-                );
-            }
-        }
-
-        if (str_ends_with($hook, 'legaciti-settings')) {
-            ViteAssets::enqueueEntry($distPath, $distUrl, 'legaciti-settings', 'settings');
+        if ($entryName === 'people') {
+            $settings = get_option('legaciti_settings', []);
+            $prefix = trim((string) ($settings['url_prefix'] ?? ''), '/');
+            wp_localize_script(
+                handle: 'legaciti-people',
+                object_name: 'legacitiPeopleScreen',
+                data: [
+                    'homeUrl' => untrailingslashit(home_url()),
+                    'urlPrefix' => $prefix,
+                ],
+            );
         }
     }
 }

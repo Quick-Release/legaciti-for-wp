@@ -1,3 +1,4 @@
+import '@wordpress/components/build-style/style.css';
 import { render, useState, useEffect, useCallback } from '@wordpress/element';
 import {
   Card,
@@ -11,7 +12,7 @@ import {
   Flex,
   FlexItem,
 } from '@wordpress/components';
-import apiFetch from '@wordpress/api-fetch';
+import apiFetch from './setup-api-fetch';
 
 const PER_PAGE = 20;
 

@@ -5,8 +5,11 @@
   "description": "Legaciti WordPress Plugin Admin UI (Vite+ / Oxc — https://viteplus.dev / https://oxc.rs/)",
   "type": "module",
   "scripts": {
-    "build": "vp build",
-    "dev": "vp dev",
+    "build": "rimraf ../assets/dist && vite build --config vite.wp-admin.mjs --mode dashboard && vite build --config vite.wp-admin.mjs --mode people && vite build --config vite.wp-admin.mjs --mode settings",
+    "watch:admin": "cross-env LEGACITI_VITE_WATCH=1 concurrently -k -n dash,people,settings \"vite build --watch --config vite.wp-admin.mjs --mode dashboard\" \"vite build --watch --config vite.wp-admin.mjs --mode people\" \"vite build --watch --config vite.wp-admin.mjs --mode settings\"",
+    "watch:browser": "browser-sync start --config browser-sync.config.cjs",
+    "run:plugin": "concurrently -k -n admin,reload \"pnpm run watch:admin\" \"pnpm run watch:browser\"",
+    "dev": "vite --config vite.wp-admin.mjs --mode settings",
     "check": "vp check",
     "check:fix": "vp check --fix",
     "lint:js": "vp check"
@@ -24,6 +27,11 @@
     "@oxlint/binding-linux-x64-gnu": "1.61.0",
     "@vitejs/plugin-react": "^4.3.4",
     "@voidzero-dev/vite-plus-linux-x64-gnu": "0.1.20",
+    "browser-sync": "^3.0.4",
+    "concurrently": "^9.2.1",
+    "cross-env": "^7.0.3",
+    "rimraf": "^6.0.1",
+    "vite": "6.4.2",
     "vite-plus": "^0.1.20"
   },
   "engines": {
@@ -31,8 +39,9 @@
   },
   "packageManager": "pnpm@10.33.2",
   "pnpm": {
-    "overrides": {
-      "vite": "npm:@voidzero-dev/vite-plus-core@0.1.20"
-    }
+    "onlyBuiltDependencies": [
+      "@parcel/watcher",
+      "esbuild"
+    ]
   }
 }
