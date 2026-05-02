@@ -6,6 +6,7 @@ namespace LegacitiForWp\RestApi;
 
 use LegacitiForWp\Api\Client;
 use LegacitiForWp\Api\SyncService;
+use LegacitiForWp\Debug\PluginLog;
 
 final class SettingsController
 {
@@ -115,6 +116,13 @@ final class SettingsController
 
         update_option('legaciti_settings', $updated);
 
+        PluginLog::info('settings', 'Plugin settings updated', [
+            'sync_frequency' => $updated['sync_frequency'] ?? null,
+            'url_prefix' => $updated['url_prefix'] ?? null,
+            'has_api_key' => ($updated['api_key'] ?? '') !== '',
+            'api_base_url' => $updated['api_base_url'] ?? null,
+        ]);
+
         return new \WP_REST_Response(['saved' => true]);
     }
 
@@ -130,6 +138,8 @@ final class SettingsController
 
     public function triggerSync(): \WP_REST_Response
     {
+        PluginLog::info('settings', 'Full sync triggered from Settings (REST)');
+
         $result = $this->syncService->sync();
 
         return new \WP_REST_Response($result->toArray());

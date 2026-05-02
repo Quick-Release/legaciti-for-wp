@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace LegacitiForWp\Routing;
 
 use LegacitiForWp\Database\PersonRepository;
+use LegacitiForWp\Debug\PluginLog;
 use LegacitiForWp\Database\PublicationRepository;
 use LegacitiForWp\Database\RelationRepository;
 
@@ -69,6 +70,10 @@ final class Router
                 set_query_var('legaciti_person_data', $person);
                 return $this->locateTemplate('person-profile.php');
             }
+
+            PluginLog::debug('router', 'Person rewrite matched but no active record', [
+                'nickname' => $personNickname,
+            ]);
         }
 
         if ($publicationSlug !== '') {
@@ -78,6 +83,10 @@ final class Router
                 set_query_var('legaciti_publication_data', $publication);
                 return $this->locateTemplate('publication-profile.php');
             }
+
+            PluginLog::debug('router', 'Publication rewrite matched but no active record', [
+                'slug' => $publicationSlug,
+            ]);
         }
 
         return $template;

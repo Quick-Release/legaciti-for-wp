@@ -39,6 +39,10 @@ function PeopleApp() {
   const [status, setStatus] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [syncing, setSyncing] = useState(false);
+  const [syncMessage, setSyncMessage] = useState(null);
+  const [checkBusy, setCheckBusy] = useState(false);
+  const [connectivity, setConnectivity] = useState(null);
 
   const load = useCallback(() => {
     setLoading(true);
@@ -77,6 +81,70 @@ function PeopleApp() {
     setSearch(searchInput.trim());
   };
 
+  const handleCheckConnectivity = () => {
+    setCheckBusy(true);
+    setConnectivity(null);
+    setError(null);
+
+    apiFetch({ path: '/legaciti/v1/admin/people/connectivity' })
+      .then((result) => {
+        setConnectivity({
+          level: result.level || (result.ok ? 'success' : 'error'),
+          message: result.message || 'No details.',
+          httpCode: result.http_code,
+          url: result.url,
+          usedApiKey: result.used_api_key,
+        });
+      })
+      .catch((err) => {
+        setConnectivity({
+          level: 'error',
+          message: err.message || 'Request failed.',
+          httpCode: null,
+          url: null,
+          usedApiKey: null,
+        });
+      })
+      .finally(() => {
+        setCheckBusy(false);
+      });
+  };
+
+  const handleSync = () => {
+    setSyncing(true);
+    setSyncMessage(null);
+    setError(null);
+
+    apiFetch({
+      path: '/legaciti/v1/admin/people/sync',
+      method: 'POST',
+    })
+      .then((result) => {
+        const parts = [];
+        if (typeof result.people_synced === 'number') {
+          parts.push(
+            `${result.people_synced} ${result.people_synced === 1 ? 'person' : 'people'} updated`,
+          );
+        }
+        if (typeof result.people_deactivated === 'number' && result.people_deactivated > 0) {
+          parts.push(`${result.people_deactivated} marked inactive (removed from API)`);
+        }
+        if (Array.isArray(result.errors) && result.errors.length > 0) {
+          setError(result.errors.join(' '));
+          setSyncMessage(null);
+        } else {
+          setSyncMessage(parts.length > 0 ? parts.join('. ') + '.' : 'Sync finished.');
+        }
+        load();
+      })
+      .catch((err) => {
+        setError(err.message || 'Sync failed.');
+      })
+      .finally(() => {
+        setSyncing(false);
+      });
+  };
+
   const statusOptions = [
     { label: 'All statuses', value: '' },
     { label: 'Active', value: 'active' },
@@ -85,12 +153,62 @@ function PeopleApp() {
 
   return (
     <div style={{ padding: '12px 0' }}>
-      <h1 className="wp-heading-inline" style={{ marginBottom: '16px' }}>
-        People
-      </h1>
+      <Flex gap={3} align="center" style={{ marginBottom: '16px', flexWrap: 'wrap' }}>
+        <h1 className="wp-heading-inline" style={{ margin: 0 }}>
+          People
+        </h1>
+        <Button variant="secondary" onClick={handleSync} isBusy={syncing} disabled={syncing || checkBusy || loading}>
+          Sync
+        </Button>
+        <Button
+          variant="secondary"
+          onClick={handleCheckConnectivity}
+          isBusy={checkBusy}
+          disabled={checkBusy || syncing}
+        >
+          Check connectivity
+        </Button>
+      </Flex>
       <p className="description" style={{ marginBottom: '20px' }}>
-        Everyone synced from Legaciti into this site (including inactive records).
+        Everyone synced from Legaciti into this site (including inactive records). Sync pulls all people from the
+        Legaciti API using your saved installation credentials (Settings). Use <strong>Check connectivity</strong> to
+        verify DNS/HTTPS from this server (the same check runs inside the WordPress/PHP container).
       </p>
+
+      {connectivity && (
+        <Notice
+          status={connectivity.level === 'success' ? 'success' : connectivity.level === 'warning' ? 'warning' : 'error'}
+          isDismissible
+          onRemove={() => setConnectivity(null)}
+          style={{ marginBottom: '12px' }}
+        >
+          <p style={{ margin: '0 0 8px' }}>{connectivity.message}</p>
+          {connectivity.url && (
+            <p style={{ margin: 0, fontSize: '12px', color: '#50575e', wordBreak: 'break-all' }}>
+              <strong>Tested URL</strong> {connectivity.url}
+            </p>
+          )}
+          <p style={{ margin: '8px 0 0', fontSize: '12px', color: '#50575e' }}>
+            {connectivity.httpCode != null && (
+              <>
+                <strong>HTTP</strong> {connectivity.httpCode}
+                {connectivity.usedApiKey != null && ' · '}
+              </>
+            )}
+            {connectivity.usedApiKey != null && (
+              <span>
+                <strong>Used saved API key</strong> {connectivity.usedApiKey ? 'yes' : 'no'}
+              </span>
+            )}
+          </p>
+        </Notice>
+      )}
+
+      {syncMessage && (
+        <Notice status="success" isDismissible onRemove={() => setSyncMessage(null)}>
+          {syncMessage}
+        </Notice>
+      )}
 
       {error && (
         <Notice status="error" isDismissible={false}>
@@ -167,7 +285,7 @@ function PeopleApp() {
                 {items.length === 0 ? (
                   <tr>
                     <td colSpan={7} style={{ padding: '16px' }}>
-                      No people synced yet. Run a sync from Settings.
+                      No people synced yet. Click Sync above or run a full sync from Settings.
                     </td>
                   </tr>
                 ) : (

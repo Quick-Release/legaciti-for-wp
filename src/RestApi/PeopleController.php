@@ -4,7 +4,10 @@ declare(strict_types=1);
 
 namespace LegacitiForWp\RestApi;
 
+use LegacitiForWp\Api\Client;
+use LegacitiForWp\Api\SyncService;
 use LegacitiForWp\Database\PersonRepository;
+use LegacitiForWp\Debug\PluginLog;
 use LegacitiForWp\Database\PublicationRepository;
 use LegacitiForWp\Database\RelationRepository;
 
@@ -17,6 +20,8 @@ final class PeopleController
         private readonly PersonRepository $personRepo,
         private readonly PublicationRepository $publicationRepo,
         private readonly RelationRepository $relationRepo,
+        private readonly SyncService $syncService,
+        private readonly Client $client,
     ) {
     }
 
@@ -70,6 +75,22 @@ final class PeopleController
             ],
         ]);
 
+        register_rest_route(self::NAMESPACE, '/admin/people/sync', [
+            [
+                'methods' => 'POST',
+                'callback' => [$this, 'postAdminPeopleSync'],
+                'permission_callback' => fn(): bool => current_user_can('manage_options'),
+            ],
+        ]);
+
+        register_rest_route(self::NAMESPACE, '/admin/people/connectivity', [
+            [
+                'methods' => 'GET',
+                'callback' => [$this, 'getAdminConnectivity'],
+                'permission_callback' => fn(): bool => current_user_can('manage_options'),
+            ],
+        ]);
+
         register_rest_route(self::NAMESPACE, self::ROUTE . '/(?P<nickname>[a-zA-Z0-9_-]+)', [
             [
                 'methods' => 'GET',
@@ -83,6 +104,20 @@ final class PeopleController
                 ],
             ],
         ]);
+    }
+
+    public function postAdminPeopleSync(): \WP_REST_Response
+    {
+        PluginLog::info('people_admin', 'People-only sync triggered (REST)');
+
+        $result = $this->syncService->syncPeopleOnly();
+
+        return new \WP_REST_Response($result->toArray());
+    }
+
+    public function getAdminConnectivity(): \WP_REST_Response
+    {
+        return new \WP_REST_Response($this->client->checkConnectivityFromSettings());
     }
 
     public function getAdminItems(\WP_REST_Request $request): \WP_REST_Response

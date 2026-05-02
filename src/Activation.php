@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace LegacitiForWp;
 
 use LegacitiForWp\Database\TableManager;
+use LegacitiForWp\Debug\PluginLog;
 
 if (! defined('LEGACITI_PLUGIN_FILE')) {
     define('LEGACITI_PLUGIN_FILE', dirname(__DIR__) . '/legaciti-for-wp.php');
@@ -29,6 +30,14 @@ final class Activation
     {
         $this->tableManager->createTables();
         $this->tableManager->setDefaultOptions();
+
+        try {
+            PluginLog::info('activation', 'Legaciti plugin activated', [
+                'db_version' => get_option('legaciti_db_version'),
+            ]);
+        } catch (\Throwable $e) {
+            // Avoid blocking activation if logging fails (e.g. missing table edge case).
+        }
 
         flush_rewrite_rules();
     }

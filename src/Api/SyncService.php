@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace LegacitiForWp\Api;
 
 use LegacitiForWp\Database\PersonRepository;
+use LegacitiForWp\Debug\PluginLog;
 use LegacitiForWp\Database\PublicationRepository;
 use LegacitiForWp\Database\RelationRepository;
 use LegacitiForWp\Models\SyncResult;
@@ -24,18 +25,49 @@ final class SyncService
     public function sync(): SyncResult
     {
         if (! $this->acquireLock()) {
-            return new SyncResult(errors: ['Sync already in progress.']);
+            $locked = new SyncResult(errors: ['Sync already in progress.']);
+            PluginLog::info('sync', 'Full sync skipped — lock held', ['mode' => 'full']);
+
+            return $locked;
         }
 
         try {
             $result = $this->doSync();
         } catch (\Throwable $e) {
+            PluginLog::exception('sync', 'Full sync threw', $e, ['mode' => 'full']);
             $result = (new SyncResult())->withError($e->getMessage());
         } finally {
             $this->releaseLock();
         }
 
         $this->updateLastSyncTimestamp();
+        $this->logSyncResult('full', $result);
+
+        return $result;
+    }
+
+    /**
+     * Fetch all people from the Legaciti Consumer API and upsert into WordPress (no publications).
+     */
+    public function syncPeopleOnly(): SyncResult
+    {
+        if (! $this->acquireLock()) {
+            PluginLog::info('sync', 'People-only sync skipped — lock held', ['mode' => 'people']);
+
+            return new SyncResult(errors: ['Sync already in progress.']);
+        }
+
+        try {
+            $result = $this->doSyncPeopleOnly();
+        } catch (\Throwable $e) {
+            PluginLog::exception('sync', 'People-only sync threw', $e, ['mode' => 'people']);
+            $result = (new SyncResult())->withError($e->getMessage());
+        } finally {
+            $this->releaseLock();
+        }
+
+        $this->updateLastSyncTimestamp();
+        $this->logSyncResult('people', $result);
 
         return $result;
     }
@@ -47,19 +79,25 @@ final class SyncService
         $activeExternalPublicationIds = [];
 
         $peoplePage = 1;
-        do {
+        $hasMorePeople = true;
+        while ($hasMorePeople) {
             try {
-                $response = $this->client->getPeople($peoplePage);
-                $people = $response['data'] ?? $response;
+                $response = $this->client->getPeople($peoplePage, 100);
+                $people = $this->peopleListFromResponse($response);
 
                 if (! is_array($people)) {
                     break;
                 }
 
                 foreach ($people as $personData) {
+                    if (! is_array($personData)) {
+                        continue;
+                    }
+                    $label = $this->personErrorLabel($personData);
                     try {
-                        $this->personRepo->upsert($personData);
-                        $activeExternalPersonIds[] = $personData['external_id'];
+                        $normalized = $this->normalizePersonFromApi($personData);
+                        $this->personRepo->upsert($normalized);
+                        $activeExternalPersonIds[] = $normalized['external_id'];
                         $result = new SyncResult(
                             peopleSynced: $result->peopleSynced + 1,
                             publicationsSynced: $result->publicationsSynced,
@@ -69,17 +107,17 @@ final class SyncService
                             errors: $result->errors,
                         );
                     } catch (\Throwable $e) {
-                        $result = $result->withError("Person {$personData['external_id']}: {$e->getMessage()}");
+                        $result = $result->withError("Person {$label}: {$e->getMessage()}");
                     }
                 }
 
                 $peoplePage++;
-                $hasMore = ($response['next_page_url'] ?? null) !== null;
+                $hasMorePeople = $this->peopleHasNextPage($response, $peoplePage);
             } catch (\Throwable $e) {
                 $result = $result->withError("People page {$peoplePage}: {$e->getMessage()}");
                 break;
             }
-        } while ($hasMore ?? false);
+        }
 
         $pubPage = 1;
         do {
@@ -143,6 +181,193 @@ final class SyncService
         );
     }
 
+    private function doSyncPeopleOnly(): SyncResult
+    {
+        $result = new SyncResult();
+        $activeExternalPersonIds = [];
+
+        $peoplePage = 1;
+        $hasMorePeople = true;
+        while ($hasMorePeople) {
+            try {
+                $response = $this->client->getPeople($peoplePage, 100);
+                $people = $this->peopleListFromResponse($response);
+
+                if (! is_array($people)) {
+                    break;
+                }
+
+                foreach ($people as $personData) {
+                    if (! is_array($personData)) {
+                        continue;
+                    }
+                    $label = $this->personErrorLabel($personData);
+                    try {
+                        $normalized = $this->normalizePersonFromApi($personData);
+                        $this->personRepo->upsert($normalized);
+                        $activeExternalPersonIds[] = $normalized['external_id'];
+                        $result = new SyncResult(
+                            peopleSynced: $result->peopleSynced + 1,
+                            publicationsSynced: 0,
+                            relationsSynced: 0,
+                            peopleDeactivated: $result->peopleDeactivated,
+                            publicationsDeactivated: 0,
+                            errors: $result->errors,
+                        );
+                    } catch (\Throwable $e) {
+                        $result = $result->withError("Person {$label}: {$e->getMessage()}");
+                    }
+                }
+
+                $peoplePage++;
+                $hasMorePeople = $this->peopleHasNextPage($response, $peoplePage);
+            } catch (\Throwable $e) {
+                $result = $result->withError("People page {$peoplePage}: {$e->getMessage()}");
+                break;
+            }
+        }
+
+        $peopleDeactivated = $this->personRepo->markInactiveExcept($activeExternalPersonIds);
+
+        return new SyncResult(
+            peopleSynced: $result->peopleSynced,
+            publicationsSynced: 0,
+            relationsSynced: 0,
+            peopleDeactivated: $peopleDeactivated,
+            publicationsDeactivated: 0,
+            errors: $result->errors,
+        );
+    }
+
+    /**
+     * @param array<string, mixed> $response
+     * @return list<array<string, mixed>>
+     */
+    private function peopleListFromResponse(array $response): array
+    {
+        if (isset($response['people']) && is_array($response['people'])) {
+            $list = $response['people'];
+        } elseif (isset($response['data']) && is_array($response['data'])) {
+            $list = $response['data'];
+        } else {
+            return [];
+        }
+
+        $out = [];
+        foreach ($list as $row) {
+            if (is_array($row)) {
+                $out[] = $row;
+            }
+        }
+
+        return $out;
+    }
+
+    /**
+     * @param array<string, mixed> $response
+     */
+    private function peopleHasNextPage(array $response, int $nextPage): bool
+    {
+        if (isset($response['pages']) && is_numeric($response['pages'])) {
+            return $nextPage <= (int) $response['pages'];
+        }
+
+        return ($response['next_page_url'] ?? null) !== null;
+    }
+
+    /**
+     * @param array<string, mixed> $p
+     * @return array<string, mixed>
+     */
+    private function normalizePersonFromApi(array $p): array
+    {
+        if (isset($p['orcid_id']) && is_string($p['orcid_id']) && $p['orcid_id'] !== '') {
+            return $this->mapConsumerApiPerson($p);
+        }
+
+        return $p;
+    }
+
+    /**
+     * @param array<string, mixed> $p
+     * @return array<string, mixed>
+     */
+    private function mapConsumerApiPerson(array $p): array
+    {
+        $orcid = (string) $p['orcid_id'];
+        $nameObj = is_array($p['name'] ?? null) ? $p['name'] : [];
+        $displayName = '';
+        if ($nameObj !== []) {
+            $displayName = $nameObj['en'] ?? $nameObj['pt'] ?? '';
+            if ($displayName === '' || $displayName === null) {
+                $first = reset($nameObj);
+                $displayName = is_string($first) ? $first : '';
+            }
+        }
+        $displayName = is_string($displayName) ? trim($displayName) : '';
+        [$first, $last] = $this->splitDisplayName($displayName);
+
+        $bio = null;
+        $bioObj = $p['biography'] ?? null;
+        if (is_array($bioObj)) {
+            $rawBio = $bioObj['en'] ?? $bioObj['pt'] ?? null;
+            if (is_string($rawBio) && $rawBio !== '') {
+                $bio = $rawBio;
+            } elseif ($rawBio === null) {
+                foreach ($bioObj as $val) {
+                    if (is_string($val) && $val !== '') {
+                        $bio = $val;
+                        break;
+                    }
+                }
+            }
+        }
+
+        return [
+            'external_id' => $orcid,
+            'first_name' => $first,
+            'last_name' => $last,
+            'nickname' => $orcid,
+            'email' => null,
+            'title' => null,
+            'bio' => $bio,
+            'avatar_url' => null,
+            'raw_api_data' => $p,
+        ];
+    }
+
+    private function splitDisplayName(string $name): array
+    {
+        if ($name === '') {
+            return ['', ''];
+        }
+
+        $parts = preg_split('/\s+/u', $name, 2, PREG_SPLIT_NO_EMPTY);
+        if ($parts === false || $parts === []) {
+            return ['', ''];
+        }
+
+        $first = (string) ($parts[0] ?? '');
+        $last = (string) ($parts[1] ?? '');
+
+        return [$first, $last];
+    }
+
+    /**
+     * @param array<string, mixed> $personData
+     */
+    private function personErrorLabel(array $personData): string
+    {
+        if (isset($personData['orcid_id']) && is_string($personData['orcid_id'])) {
+            return $personData['orcid_id'];
+        }
+        if (isset($personData['external_id']) && is_string($personData['external_id'])) {
+            return $personData['external_id'];
+        }
+
+        return 'unknown';
+    }
+
     private function syncPublicationRelations(int $publicationId, array $peopleRelations): void
     {
         $syncData = [];
@@ -180,5 +405,17 @@ final class SyncService
         $settings = get_option('legaciti_settings', []);
         $settings['last_sync'] = current_time('mysql');
         update_option('legaciti_settings', $settings);
+    }
+
+    private function logSyncResult(string $mode, SyncResult $result): void
+    {
+        foreach ($result->errors as $err) {
+            PluginLog::warning('sync', $err, ['mode' => $mode]);
+        }
+        if (! $result->hasErrors()) {
+            PluginLog::info('sync', "Sync ({$mode}) completed", $result->toArray());
+        } else {
+            PluginLog::warning('sync', "Sync ({$mode}) finished with errors", $result->toArray());
+        }
     }
 }

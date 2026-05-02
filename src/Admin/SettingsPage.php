@@ -44,6 +44,15 @@ final class SettingsPage
 
         add_submenu_page(
             parent_slug: 'legaciti-dashboard',
+            page_title: __('Errors', 'legaciti-for-wp'),
+            menu_title: __('Errors', 'legaciti-for-wp'),
+            capability: 'manage_options',
+            menu_slug: 'legaciti-errors',
+            callback: [$this, 'renderErrors'],
+        );
+
+        add_submenu_page(
+            parent_slug: 'legaciti-dashboard',
             page_title: __('Settings', 'legaciti-for-wp'),
             menu_title: __('Settings', 'legaciti-for-wp'),
             capability: 'manage_options',
@@ -68,6 +77,14 @@ final class SettingsPage
         echo '</div>';
     }
 
+    public function renderErrors(): void
+    {
+        echo '<div class="wrap">';
+        echo '<p><strong>' . esc_html__('Error log — Legaciti', 'legaciti-for-wp') . '</strong></p>';
+        echo '<div id="legaciti-errors"></div>';
+        echo '</div>';
+    }
+
     public function renderSettings(): void
     {
         echo '<div class="wrap">';
@@ -89,6 +106,7 @@ final class SettingsPage
         $pageToEntry = [
             'legaciti-dashboard' => 'dashboard',
             'legaciti-people' => 'people',
+            'legaciti-errors' => 'errors',
             'legaciti-settings' => 'settings',
         ];
 
@@ -132,7 +150,7 @@ final class SettingsPage
             wp_localize_script(
                 handle: 'legaciti-people',
                 object_name: 'legacitiPeopleScreen',
-                data: [
+                l10n: [
                     'homeUrl' => untrailingslashit(home_url()),
                     'urlPrefix' => $prefix,
                 ],

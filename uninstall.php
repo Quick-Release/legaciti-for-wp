@@ -21,6 +21,7 @@ if ($shouldRemove) {
         $wpdb->prefix . 'leg_people',
         $wpdb->prefix . 'leg_publications',
         $wpdb->prefix . 'leg_person_publications',
+        $wpdb->prefix . 'leg_error_logs',
     ];
 
     foreach ($tables as $table) {

@@ -10,12 +10,14 @@ final class ViteAssets
     private const ENTRY_JS = [
         'dashboard' => 'assets/legaciti-dashboard.js',
         'people' => 'assets/legaciti-people.js',
+        'errors' => 'assets/legaciti-errors.js',
         'settings' => 'assets/legaciti-settings.js',
     ];
 
     private const ENTRY_CSS = [
         'dashboard' => 'assets/legaciti-dashboard.css',
         'people' => 'assets/legaciti-people.css',
+        'errors' => 'assets/legaciti-errors.css',
         'settings' => 'assets/legaciti-settings.css',
     ];
 

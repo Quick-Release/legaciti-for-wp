@@ -5,8 +5,8 @@
   "description": "Legaciti WordPress Plugin Admin UI (Vite+ / Oxc — https://viteplus.dev / https://oxc.rs/)",
   "type": "module",
   "scripts": {
-    "build": "rimraf ../assets/dist && vite build --config vite.wp-admin.mjs --mode dashboard && vite build --config vite.wp-admin.mjs --mode people && vite build --config vite.wp-admin.mjs --mode settings",
-    "watch:admin": "cross-env LEGACITI_VITE_WATCH=1 concurrently -k -n dash,people,settings \"vite build --watch --config vite.wp-admin.mjs --mode dashboard\" \"vite build --watch --config vite.wp-admin.mjs --mode people\" \"vite build --watch --config vite.wp-admin.mjs --mode settings\"",
+    "build": "rimraf ../assets/dist && vite build --config vite.wp-admin.mjs --mode dashboard && vite build --config vite.wp-admin.mjs --mode people && vite build --config vite.wp-admin.mjs --mode errors && vite build --config vite.wp-admin.mjs --mode settings",
+    "watch:admin": "cross-env LEGACITI_VITE_WATCH=1 concurrently -k -n dash,people,errors,settings \"vite build --watch --config vite.wp-admin.mjs --mode dashboard\" \"vite build --watch --config vite.wp-admin.mjs --mode people\" \"vite build --watch --config vite.wp-admin.mjs --mode errors\" \"vite build --watch --config vite.wp-admin.mjs --mode settings\"",
     "watch:browser": "browser-sync start --config browser-sync.config.cjs",
     "run:plugin": "concurrently -k -n admin,reload \"pnpm run watch:admin\" \"pnpm run watch:browser\"",
     "dev": "vite --config vite.wp-admin.mjs --mode settings",

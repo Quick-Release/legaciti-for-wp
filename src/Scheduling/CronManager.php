@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace LegacitiForWp\Scheduling;
 
 use LegacitiForWp\Api\SyncService;
+use LegacitiForWp\Debug\PluginLog;
 
 final class CronManager
 {
@@ -40,6 +41,7 @@ final class CronManager
 
     public function handleSyncEvent(): void
     {
+        PluginLog::info('cron', 'Scheduled Legaciti sync started');
         $this->syncService->sync();
     }
 
@@ -48,9 +50,12 @@ final class CronManager
         check_ajax_referer('legaciti_manual_sync', 'nonce');
 
         if (! current_user_can('manage_options')) {
+            PluginLog::warning('cron', 'Manual sync AJAX denied', ['reason' => 'capability']);
+
             wp_send_json_error(['message' => 'Unauthorized.'], 403);
         }
 
+        PluginLog::info('cron', 'Manual sync AJAX started');
         $result = $this->syncService->sync();
 
         wp_send_json_success($result->toArray());

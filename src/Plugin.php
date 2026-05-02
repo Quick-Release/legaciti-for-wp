@@ -8,11 +8,15 @@ use LegacitiForWp\Admin\BrowserSyncDev;
 use LegacitiForWp\Admin\SettingsPage;
 use LegacitiForWp\Api\Client;
 use LegacitiForWp\Api\SyncService;
+use LegacitiForWp\Database\ErrorLogRepository;
 use LegacitiForWp\Database\PersonRepository;
 use LegacitiForWp\Database\PublicationRepository;
 use LegacitiForWp\Database\RelationRepository;
 use LegacitiForWp\Database\TableManager;
+use LegacitiForWp\Debug\ErrorReporting;
+use LegacitiForWp\Debug\PluginLog;
 use LegacitiForWp\RestApi\DashboardController;
+use LegacitiForWp\RestApi\ErrorLogsController;
 use LegacitiForWp\RestApi\PeopleController;
 use LegacitiForWp\RestApi\PublicationsController;
 use LegacitiForWp\RestApi\SettingsController;
@@ -40,6 +44,14 @@ final class Plugin
     private function boot(): void
     {
         $tableManager = new TableManager();
+        $tableManager->maybeUpgrade();
+
+        $errorLogRepo = new ErrorLogRepository();
+        PluginLog::setRepository($errorLogRepo);
+
+        $errorReporting = new ErrorReporting();
+        $errorReporting->register();
+
         $personRepo = new PersonRepository();
         $publicationRepo = new PublicationRepository();
         $relationRepo = new RelationRepository();
@@ -58,10 +70,11 @@ final class Plugin
 
         $settingsPage = new SettingsPage();
         $browserSyncDev = new BrowserSyncDev();
-        $peopleController = new PeopleController($personRepo, $publicationRepo, $relationRepo);
+        $peopleController = new PeopleController($personRepo, $publicationRepo, $relationRepo, $syncService, $client);
         $publicationsController = new PublicationsController($publicationRepo, $personRepo, $relationRepo);
         $dashboardController = new DashboardController($personRepo, $publicationRepo);
         $settingsController = new SettingsController($syncService, $client);
+        $errorLogsController = new ErrorLogsController($errorLogRepo);
 
         add_action('plugins_loaded', [$cronManager, 'register']);
         add_action('plugins_loaded', [$settingsPage, 'register']);
@@ -71,5 +84,6 @@ final class Plugin
         add_action('rest_api_init', [$publicationsController, 'registerRoutes']);
         add_action('rest_api_init', [$dashboardController, 'registerRoutes']);
         add_action('rest_api_init', [$settingsController, 'registerRoutes']);
+        add_action('rest_api_init', [$errorLogsController, 'registerRoutes']);
     }
 }

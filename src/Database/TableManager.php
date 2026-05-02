@@ -4,9 +4,11 @@ declare(strict_types=1);
 
 namespace LegacitiForWp\Database;
 
+use LegacitiForWp\Debug\PluginLog;
+
 final class TableManager
 {
-    private const DB_VERSION = '1.0.0';
+    private const DB_VERSION = '1.1.0';
 
     private function getTableNames(): array
     {
@@ -16,7 +18,30 @@ final class TableManager
             'people' => $wpdb->prefix . 'leg_people',
             'publications' => $wpdb->prefix . 'leg_publications',
             'person_publications' => $wpdb->prefix . 'leg_person_publications',
+            'error_logs' => $wpdb->prefix . 'leg_error_logs',
         ];
+    }
+
+    public function maybeUpgrade(): void
+    {
+        $current = (string) get_option('legaciti_db_version', '');
+        if ($current === self::DB_VERSION) {
+            return;
+        }
+
+        $from = $current;
+        $this->createTables();
+
+        if ($from !== '' && $from !== self::DB_VERSION) {
+            try {
+                PluginLog::info('database', 'Legaciti DB schema upgraded', [
+                    'from' => $from,
+                    'to' => self::DB_VERSION,
+                ]);
+            } catch (\Throwable $e) {
+                // Logging must never break upgrades.
+            }
+        }
     }
 
     public function createTables(): void
@@ -79,6 +104,27 @@ final class TableManager
             UNIQUE KEY person_publication (person_id, publication_id),
             KEY person_id (person_id),
             KEY publication_id (publication_id)
+        ) $charsetCollate;";
+
+        $sql[] = "CREATE TABLE {$tables['error_logs']} (
+            id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+            level varchar(20) NOT NULL,
+            source varchar(100) NOT NULL,
+            message longtext NOT NULL,
+            context longtext DEFAULT NULL,
+            exception_type varchar(255) DEFAULT NULL,
+            file varchar(500) DEFAULT NULL,
+            line int(11) DEFAULT NULL,
+            stack longtext DEFAULT NULL,
+            user_id bigint(20) unsigned DEFAULT NULL,
+            request_uri text DEFAULT NULL,
+            request_method varchar(10) DEFAULT NULL,
+            ip varchar(45) DEFAULT NULL,
+            created_at datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY  (id),
+            KEY level_created (level, created_at),
+            KEY source_created (source, created_at),
+            KEY created_at (created_at)
         ) $charsetCollate;";
 
         require_once ABSPATH . 'wp-admin/includes/upgrade.php';
