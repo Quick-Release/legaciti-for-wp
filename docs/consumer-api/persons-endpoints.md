@@ -8,7 +8,7 @@ The Consumer API provides three endpoints for fetching person (researcher) data.
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| **GET** | `/v1/people` | List all people with at least one visible publication |
+| **GET** | `/v1/people` | List people (paginated) |
 | **GET** | `/v1/people/:orcid` | Fetch a single person by ORCID ID |
 | **GET** | `/v1/people/:orcid/publications` | List all visible publications for a person |
 
@@ -36,18 +36,11 @@ GET /v1/people
 {
   "people": [
     {
-      "orcid_id": "0000-0001-2345-6789",
-      "name": {
-        "en": "John Doe",
-        "pt": "João Silva"
-      },
-      "biography": {
-        "en": "Researcher in artificial intelligence and machine learning",
-        "pt": null
-      },
-      "last_fetched_at": 1704067200,
-      "sync_status": "complete",
-      "publication_count": 42
+      "orcid_id": "0000-0002-1825-0097",
+      "name": "John Doe",
+      "photo_url": "https://cdn.example.com/photos/jdoe.jpg",
+      "slug": "jdoe",
+      "people_type": "researcher"
     }
   ],
   "page": 1,
@@ -64,11 +57,12 @@ GET /v1/people
 | Field | Type | Description |
 |-------|------|-------------|
 | `orcid_id` | string | ORCID identifier (e.g., `0000-0001-2345-6789`) |
-| `name` | object | Person's name, keyed by language code (`en`, `pt`, etc.). May contain `null` values for locales without data. |
-| `biography` | object | Person's biography, keyed by language code. May be `null` or contain `null` values per locale. |
-| `last_fetched_at` | integer | Unix timestamp when this person's ORCID profile was last synced |
-| `sync_status` | string | Status of ORCID sync: `pending`, `processing`, `complete`, or `failed` |
-| `publication_count` | integer | Total number of visible, non-deleted publications for this person |
+| `name` | string | Display name |
+| `photo_url` | string | URL of the person's photo |
+| `slug` | string | URL-safe identifier for the person |
+| `people_type` | string | Category for the person (e.g., `researcher`) |
+
+Older responses may use a localized `name` object and `biography` object instead of the flat shape above; clients should accept either.
 
 #### List Metadata
 | Field | Type | Description |
@@ -83,15 +77,15 @@ GET /v1/people
 
 ```bash
 # List first page of all people
-curl -H "Authorization: Bearer YOUR_TOKEN" \
-  https://api.legaciti.org/v1/people
+curl -H "X-API-Key: YOUR_INSTALLATION_CREDENTIAL" \
+  "https://api.legaciti.org/v1/people?page=1&per_page=50"
 
 # Search for "alice"
-curl -H "Authorization: Bearer YOUR_TOKEN" \
+curl -H "X-API-Key: YOUR_INSTALLATION_CREDENTIAL" \
   "https://api.legaciti.org/v1/people?q=alice"
 
 # Get 50 items per page, page 2
-curl -H "Authorization: Bearer YOUR_TOKEN" \
+curl -H "X-API-Key: YOUR_INSTALLATION_CREDENTIAL" \
   "https://api.legaciti.org/v1/people?page=2&per_page=50"
 ```
 
@@ -325,7 +319,7 @@ X-RateLimit-Reset: 1704153600
 # Example: Fetch all people in batches
 page=1
 while [ $page -le $total_pages ]; do
-  curl -H "Authorization: Bearer YOUR_TOKEN" \
+  curl -H "X-API-Key: YOUR_INSTALLATION_CREDENTIAL" \
     "https://api.legaciti.org/v1/people?page=$page&per_page=100"
   ((page++))
 done

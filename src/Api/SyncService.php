@@ -249,6 +249,8 @@ final class SyncService
             $list = $response['people'];
         } elseif (isset($response['data']) && is_array($response['data'])) {
             $list = $response['data'];
+        } elseif (array_is_list($response)) {
+            $list = $response;
         } else {
             return [];
         }
@@ -295,16 +297,22 @@ final class SyncService
     private function mapConsumerApiPerson(array $p): array
     {
         $orcid = (string) $p['orcid_id'];
-        $nameObj = is_array($p['name'] ?? null) ? $p['name'] : [];
         $displayName = '';
-        if ($nameObj !== []) {
-            $displayName = $nameObj['en'] ?? $nameObj['pt'] ?? '';
-            if ($displayName === '' || $displayName === null) {
-                $first = reset($nameObj);
-                $displayName = is_string($first) ? $first : '';
+
+        if (isset($p['name']) && is_string($p['name'])) {
+            $displayName = trim($p['name']);
+        } else {
+            $nameObj = is_array($p['name'] ?? null) ? $p['name'] : [];
+            if ($nameObj !== []) {
+                $displayName = $nameObj['en'] ?? $nameObj['pt'] ?? '';
+                if ($displayName === '' || $displayName === null) {
+                    $first = reset($nameObj);
+                    $displayName = is_string($first) ? $first : '';
+                }
             }
+            $displayName = is_string($displayName) ? trim($displayName) : '';
         }
-        $displayName = is_string($displayName) ? trim($displayName) : '';
+
         [$first, $last] = $this->splitDisplayName($displayName);
 
         $bio = null;
@@ -323,15 +331,30 @@ final class SyncService
             }
         }
 
+        $nickname = $orcid;
+        if (isset($p['slug']) && is_string($p['slug']) && $p['slug'] !== '') {
+            $nickname = $p['slug'];
+        }
+
+        $avatarUrl = null;
+        if (isset($p['photo_url']) && is_string($p['photo_url']) && $p['photo_url'] !== '') {
+            $avatarUrl = $p['photo_url'];
+        }
+
+        $peopleType = null;
+        if (isset($p['people_type']) && is_string($p['people_type']) && $p['people_type'] !== '') {
+            $peopleType = $p['people_type'];
+        }
+
         return [
             'external_id' => $orcid,
             'first_name' => $first,
             'last_name' => $last,
-            'nickname' => $orcid,
+            'nickname' => $nickname,
             'email' => null,
-            'title' => null,
+            'title' => $peopleType,
             'bio' => $bio,
-            'avatar_url' => null,
+            'avatar_url' => $avatarUrl,
             'raw_api_data' => $p,
         ];
     }
@@ -360,6 +383,9 @@ final class SyncService
     {
         if (isset($personData['orcid_id']) && is_string($personData['orcid_id'])) {
             return $personData['orcid_id'];
+        }
+        if (isset($personData['slug']) && is_string($personData['slug']) && $personData['slug'] !== '') {
+            return $personData['slug'];
         }
         if (isset($personData['external_id']) && is_string($personData['external_id'])) {
             return $personData['external_id'];

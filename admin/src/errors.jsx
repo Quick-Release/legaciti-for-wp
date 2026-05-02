@@ -38,6 +38,27 @@ function formatContext(value) {
   return String(value);
 }
 
+async function copyTextToClipboard(text) {
+  if (navigator.clipboard && window.isSecureContext) {
+    await navigator.clipboard.writeText(text);
+    return;
+  }
+
+  const textArea = document.createElement('textarea');
+  textArea.value = text;
+  textArea.style.position = 'fixed';
+  textArea.style.left = '-9999px';
+  document.body.appendChild(textArea);
+  textArea.focus();
+  textArea.select();
+
+  const success = document.execCommand('copy');
+  document.body.removeChild(textArea);
+  if (!success) {
+    throw new Error('Clipboard copy failed.');
+  }
+}
+
 function ErrorsApp() {
   const [items, setItems] = useState([]);
   const [total, setTotal] = useState(0);
@@ -133,6 +154,21 @@ function ErrorsApp() {
     a.download = `legaciti-error-logs-page-${page}.json`;
     a.click();
     URL.revokeObjectURL(a.href);
+  };
+
+  const copyError = async (row) => {
+    try {
+      await copyTextToClipboard(JSON.stringify(row, null, 2));
+      setNotice({
+        status: 'success',
+        message: `Copied error #${row.id} to clipboard.`,
+      });
+    } catch (err) {
+      setNotice({
+        status: 'error',
+        message: err?.message || 'Failed to copy error to clipboard.',
+      });
+    }
   };
 
   return (
@@ -288,9 +324,14 @@ function ErrorsApp() {
                           {row.message}
                         </td>
                         <td>
-                          <Button variant="link" onClick={() => toggleRow(row.id)}>
-                            {expanded[row.id] ? 'Hide' : 'Show'}
-                          </Button>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <Button variant="link" onClick={() => toggleRow(row.id)}>
+                              {expanded[row.id] ? 'Hide' : 'Show'}
+                            </Button>
+                            <Button variant="link" onClick={() => copyError(row)}>
+                              Copy
+                            </Button>
+                          </div>
                         </td>
                       </tr>
                       {expanded[row.id] && (

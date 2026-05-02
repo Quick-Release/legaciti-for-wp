@@ -8,6 +8,75 @@ use LegacitiForWp\Debug\PluginLog;
 
 final class Client
 {
+    /**
+     * Build common auth/request headers expected by the Consumer/Integrations APIs.
+     *
+     * @return array<string, string>
+     */
+    private function buildHeaders(string $apiKey): array
+    {
+        $headers = [
+            'Accept' => 'application/json',
+            'Content-Type' => 'application/json',
+        ];
+
+        if ($apiKey !== '') {
+            $headers['X-API-Key'] = $apiKey;
+        }
+
+        return $headers;
+    }
+
+    /**
+     * @return array{code: string|null, preview: string}
+     */
+    private function parseErrorBody(string $body): array
+    {
+        $preview = strlen($body) > 2000 ? substr($body, 0, 2000) . '…' : $body;
+
+        try {
+            $decoded = json_decode($body, true, 512, JSON_THROW_ON_ERROR);
+        } catch (\JsonException) {
+            return ['code' => null, 'preview' => $preview];
+        }
+
+        if (! is_array($decoded)) {
+            return ['code' => null, 'preview' => $preview];
+        }
+
+        $apiCode = $decoded['code'] ?? null;
+
+        return [
+            'code' => is_string($apiCode) ? $apiCode : null,
+            'preview' => $preview,
+        ];
+    }
+
+    private function explainAuthFailure(int $httpCode, ?string $apiCode): string
+    {
+        if ($httpCode === 401 && $apiCode === 'missing_api_key') {
+            return 'Missing API key header. Ensure outbound requests include X-API-Key.';
+        }
+
+        if ($httpCode === 401 && $apiCode === 'invalid_installation_credential') {
+            return 'Invalid installation credential (X-API-Key).';
+        }
+
+        if ($httpCode === 403 && $apiCode === 'installation_scope_denied') {
+            return 'Credential is valid but missing required scope (for example people.read).';
+        }
+
+        if ($httpCode === 403 && in_array($apiCode, ['inactive_installation', 'inactive_installation_credential'], true)) {
+            return 'Installation or credential is inactive.';
+        }
+
+        if ($httpCode === 403 && $apiCode === 'origin_not_verified') {
+            return 'Installation origin is not verified yet.';
+        }
+
+        return 'Authentication/authorization failed.';
+    }
+
     private function getSettings(): array
     {
         return get_option('legaciti_settings', [
@@ -28,11 +97,7 @@ final class Client
 
         $response = wp_remote_get($url, [
             'timeout' => 30,
-            'headers' => [
-                'Authorization' => 'Bearer ' . ($settings['api_key'] ?? ''),
-                'Accept' => 'application/json',
-                'Content-Type' => 'application/json',
-            ],
+            'headers' => $this->buildHeaders((string) ($settings['api_key'] ?? '')),
         ]);
 
         if (is_wp_error($response)) {
@@ -51,12 +116,13 @@ final class Client
         $body = wp_remote_retrieve_body($response);
 
         if ($code < 200 || $code >= 300) {
-            $preview = strlen($body) > 2000 ? substr($body, 0, 2000) . '…' : $body;
+            $parsedError = $this->parseErrorBody($body);
             PluginLog::error('api_client', "API returned HTTP {$code}", [
                 'endpoint' => $endpoint,
                 'url' => $url,
                 'code' => $code,
-                'body_preview' => $preview,
+                'api_code' => $parsedError['code'],
+                'body_preview' => $parsedError['preview'],
             ]);
 
             throw new \RuntimeException("API returned HTTP {$code}");
@@ -92,18 +158,11 @@ final class Client
             return ['valid' => false, 'message' => 'API key is required.'];
         }
 
-        $url = $baseUrl . '/v1/people?' . http_build_query([
-            'page' => 1,
-            'per_page' => 1,
-        ]);
+        $url = $baseUrl . '/integrations/v1/installation';
 
         $response = wp_remote_get($url, [
             'timeout' => 15,
-            'headers' => [
-                'Authorization' => 'Bearer ' . $apiKey,
-                'Accept' => 'application/json',
-                'Content-Type' => 'application/json',
-            ],
+            'headers' => $this->buildHeaders($apiKey),
         ]);
 
         if (is_wp_error($response)) {
@@ -129,7 +188,11 @@ final class Client
         ]);
 
         if ($code === 401 || $code === 403) {
-            return ['valid' => false, 'message' => 'Invalid API key or insufficient permissions (HTTP ' . $code . ').'];
+            $body = wp_remote_retrieve_body($response);
+            $parsedError = $this->parseErrorBody($body);
+            $detail = $this->explainAuthFailure($code, $parsedError['code']);
+
+            return ['valid' => false, 'message' => $detail . ' (HTTP ' . $code . ').'];
         }
 
         if ($code === 404) {
@@ -161,13 +224,8 @@ final class Client
             'per_page' => 1,
         ]);
 
-        $headers = [
-            'Accept' => 'application/json',
-        ];
+        $headers = $this->buildHeaders($key);
         $usedKey = $key !== '';
-        if ($usedKey) {
-            $headers['Authorization'] = 'Bearer ' . $key;
-        }
 
         $response = wp_remote_get($url, [
             'timeout' => 20,
@@ -199,8 +257,11 @@ final class Client
         }
 
         if ($code === 401 || $code === 403) {
+            $body = wp_remote_retrieve_body($response);
+            $parsedError = $this->parseErrorBody($body);
+
             $hint = $usedKey
-                ? ' Check the installation token and people.read scope in Legaciti.'
+                ? ' ' . $this->explainAuthFailure($code, $parsedError['code'])
                 : ' Save an API key under Legaciti → Settings—the route requires authentication.';
 
             return [
