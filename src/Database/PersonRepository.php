@@ -158,4 +158,73 @@ final class PersonRepository
             )
         );
     }
+
+    /**
+     * All synced people for admin (active and inactive), with optional status filter and search.
+     *
+     * @return list<Person>
+     */
+    public function findForAdmin(int $page, int $perPage, string $search = '', ?string $status = null): array
+    {
+        global $wpdb;
+
+        $offset = ($page - 1) * $perPage;
+        $table = $this->tableName();
+
+        [$whereSql, $prepareArgs] = $this->adminListWhereClause($search, $status);
+
+        $sql = "SELECT * FROM {$table} WHERE {$whereSql} ORDER BY last_name, first_name LIMIT %d OFFSET %d";
+        $prepareArgs[] = $perPage;
+        $prepareArgs[] = $offset;
+
+        $rows = $wpdb->get_results(
+            $wpdb->prepare($sql, ...$prepareArgs),
+            ARRAY_A
+        );
+
+        return array_map(fn(array $row): Person => Person::fromArray($row), $rows ?: []);
+    }
+
+    public function countForAdmin(string $search = '', ?string $status = null): int
+    {
+        global $wpdb;
+
+        $table = $this->tableName();
+        [$whereSql, $prepareArgs] = $this->adminListWhereClause($search, $status);
+
+        $sql = "SELECT COUNT(*) FROM {$table} WHERE {$whereSql}";
+
+        if ($prepareArgs === []) {
+            return (int) $wpdb->get_var($sql);
+        }
+
+        return (int) $wpdb->get_var($wpdb->prepare($sql, ...$prepareArgs));
+    }
+
+    /**
+     * @return array{0: string, 1: list<string|int>}
+     */
+    private function adminListWhereClause(string $search, ?string $status): array
+    {
+        global $wpdb;
+
+        $parts = ['1=1'];
+        $args = [];
+
+        if ($status === 'active' || $status === 'inactive') {
+            $parts[] = 'status = %s';
+            $args[] = $status;
+        }
+
+        if ($search !== '') {
+            $like = '%' . $wpdb->esc_like($search) . '%';
+            $parts[] = '(first_name LIKE %s OR last_name LIKE %s OR nickname LIKE %s OR COALESCE(email, \'\') LIKE %s)';
+            $args[] = $like;
+            $args[] = $like;
+            $args[] = $like;
+            $args[] = $like;
+        }
+
+        return [implode(' AND ', $parts), $args];
+    }
 }

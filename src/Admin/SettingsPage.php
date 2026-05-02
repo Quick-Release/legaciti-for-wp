@@ -35,6 +35,15 @@ final class SettingsPage
 
         add_submenu_page(
             parent_slug: 'legaciti-dashboard',
+            page_title: __('People', 'legaciti-for-wp'),
+            menu_title: __('People', 'legaciti-for-wp'),
+            capability: 'manage_options',
+            menu_slug: 'legaciti-people',
+            callback: [$this, 'renderPeople'],
+        );
+
+        add_submenu_page(
+            parent_slug: 'legaciti-dashboard',
             page_title: __('Settings', 'legaciti-for-wp'),
             menu_title: __('Settings', 'legaciti-for-wp'),
             capability: 'manage_options',
@@ -48,6 +57,11 @@ final class SettingsPage
         echo '<div id="legaciti-dashboard" class="wrap"></div>';
     }
 
+    public function renderPeople(): void
+    {
+        echo '<div id="legaciti-people" class="wrap"></div>';
+    }
+
     public function renderSettings(): void
     {
         echo '<div id="legaciti-settings" class="wrap"></div>';
@@ -57,6 +71,7 @@ final class SettingsPage
     {
         $screens = [
             'toplevel_page_legaciti-dashboard',
+            'legaciti_page_legaciti-people',
             'legaciti_page_legaciti-settings',
         ];
 
@@ -68,43 +83,26 @@ final class SettingsPage
         $distPath = LEGACITI_PLUGIN_DIR . 'assets/dist/';
 
         if (str_ends_with($hook, 'legaciti-dashboard')) {
-            $assetFile = $distPath . 'dashboard.asset.php';
-            if (file_exists($assetFile)) {
-                $asset = include $assetFile;
-                wp_enqueue_script(
-                    handle: 'legaciti-dashboard',
-                    src: $distUrl . 'dashboard.js',
-                    deps: $asset['dependencies'],
-                    ver: $asset['version'],
-                    args: true,
-                );
-                wp_enqueue_style(
-                    handle: 'legaciti-dashboard',
-                    src: $distUrl . 'dashboard.css',
-                    deps: [],
-                    ver: $asset['version'],
+            ViteAssets::enqueueEntry($distPath, $distUrl, 'legaciti-dashboard', 'dashboard');
+        }
+
+        if (str_ends_with($hook, 'legaciti-people')) {
+            if (ViteAssets::enqueueEntry($distPath, $distUrl, 'legaciti-people', 'people')) {
+                $settings = get_option('legaciti_settings', []);
+                $prefix = trim((string) ($settings['url_prefix'] ?? ''), '/');
+                wp_localize_script(
+                    handle: 'legaciti-people',
+                    object_name: 'legacitiPeopleScreen',
+                    data: [
+                        'homeUrl' => untrailingslashit(home_url()),
+                        'urlPrefix' => $prefix,
+                    ],
                 );
             }
         }
 
         if (str_ends_with($hook, 'legaciti-settings')) {
-            $assetFile = $distPath . 'settings.asset.php';
-            if (file_exists($assetFile)) {
-                $asset = include $assetFile;
-                wp_enqueue_script(
-                    handle: 'legaciti-settings',
-                    src: $distUrl . 'settings.js',
-                    deps: $asset['dependencies'],
-                    ver: $asset['version'],
-                    args: true,
-                );
-                wp_enqueue_style(
-                    handle: 'legaciti-settings',
-                    src: $distUrl . 'settings.css',
-                    deps: [],
-                    ver: $asset['version'],
-                );
-            }
+            ViteAssets::enqueueEntry($distPath, $distUrl, 'legaciti-settings', 'settings');
         }
     }
 }

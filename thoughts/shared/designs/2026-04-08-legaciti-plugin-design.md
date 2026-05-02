@@ -2,7 +2,10 @@
 date: 2026-04-08
 topic: "Legaciti WordPress Plugin - Custom Tables + REST API + Rewrite Rules"
 status: validated
+implementation_ref: "../plans/2026-04-08-legaciti-plugin.md"
 ---
+
+The companion plan lists how the current codebase maps to this design (tables-only, no CPTs, REST + rewrites).
 
 ## Problem Statement
 

@@ -44,6 +44,32 @@ final class PeopleController
             ],
         ]);
 
+        register_rest_route(self::NAMESPACE, '/admin/people', [
+            [
+                'methods' => 'GET',
+                'callback' => [$this, 'getAdminItems'],
+                'permission_callback' => fn(): bool => current_user_can('manage_options'),
+                'args' => [
+                    'page' => [
+                        'default' => 1,
+                        'sanitize_callback' => 'absint',
+                    ],
+                    'per_page' => [
+                        'default' => 20,
+                        'sanitize_callback' => 'absint',
+                    ],
+                    'search' => [
+                        'default' => '',
+                        'sanitize_callback' => 'sanitize_text_field',
+                    ],
+                    'status' => [
+                        'default' => '',
+                        'sanitize_callback' => 'sanitize_text_field',
+                    ],
+                ],
+            ],
+        ]);
+
         register_rest_route(self::NAMESPACE, self::ROUTE . '/(?P<nickname>[a-zA-Z0-9_-]+)', [
             [
                 'methods' => 'GET',
@@ -56,6 +82,32 @@ final class PeopleController
                     ],
                 ],
             ],
+        ]);
+    }
+
+    public function getAdminItems(\WP_REST_Request $request): \WP_REST_Response
+    {
+        $page = max(1, (int) $request->get_param('page'));
+        $perPage = min(100, max(1, (int) $request->get_param('per_page')));
+        $search = (string) $request->get_param('search');
+        $statusParam = (string) $request->get_param('status');
+
+        $status = null;
+        if ($statusParam === 'active' || $statusParam === 'inactive') {
+            $status = $statusParam;
+        }
+
+        $people = $this->personRepo->findForAdmin($page, $perPage, $search, $status);
+        $total = $this->personRepo->countForAdmin($search, $status);
+
+        $data = array_map(fn($person): array => $person->toArray(), $people);
+
+        return new \WP_REST_Response([
+            'data' => $data,
+            'total' => $total,
+            'page' => $page,
+            'per_page' => $perPage,
+            'total_pages' => $perPage > 0 ? (int) ceil($total / $perPage) : 0,
         ]);
     }
 
