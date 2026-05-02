@@ -6,7 +6,7 @@
  * Version:     0.1.0
  * Author:      Legaciti
  * License:     proprietary
- * Requires PHP: 8.1
+ * Requires PHP: 8.2
  */
 
 declare(strict_types=1);
@@ -15,10 +15,10 @@ if (! defined('ABSPATH')) {
     exit;
 }
 
-if (version_compare(PHP_VERSION, '8.1.0', '<')) {
+if (version_compare(PHP_VERSION, '8.2.0', '<')) {
     add_action('admin_notices', static function (): void {
         echo '<div class="error"><p>';
-        echo esc_html__('Legaciti requires PHP 8.1 or higher.', 'legaciti-for-wp');
+        echo esc_html__('Legaciti requires PHP 8.2 or higher.', 'legaciti-for-wp');
         echo '</p></div>';
     });
     return;
