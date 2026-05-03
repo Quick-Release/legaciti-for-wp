@@ -71,7 +71,7 @@ final class Plugin
         $settingsPage = new SettingsPage();
         $browserSyncDev = new BrowserSyncDev();
         $peopleController = new PeopleController($personRepo, $publicationRepo, $relationRepo, $syncService, $client);
-        $publicationsController = new PublicationsController($publicationRepo, $personRepo, $relationRepo);
+        $publicationsController = new PublicationsController($publicationRepo, $relationRepo, $syncService, $client);
         $dashboardController = new DashboardController($personRepo, $publicationRepo);
         $settingsController = new SettingsController($syncService, $client);
         $errorLogsController = new ErrorLogsController($errorLogRepo);

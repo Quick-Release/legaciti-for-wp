@@ -164,4 +164,105 @@ final class PublicationRepository
             )
         );
     }
+
+    /**
+     * All synced publications for admin (active and inactive), with optional status filter and search.
+     *
+     * @param 'title'|'publication_date'|'journal'|'slug'|'doi' $orderby
+     * @param 'asc'|'desc' $order
+     * @return list<Publication>
+     */
+    public function findForAdmin(
+        int $page,
+        int $perPage,
+        string $search = '',
+        ?string $status = null,
+        string $orderby = 'publication_date',
+        string $order = 'desc',
+    ): array {
+        global $wpdb;
+
+        $offset = ($page - 1) * $perPage;
+        $table = $this->tableName();
+
+        [$whereSql, $prepareArgs] = $this->adminListWhereClause($search, $status);
+
+        $orderBySql = $this->adminOrderByClause($orderby, $order);
+        $sql = "SELECT * FROM {$table} WHERE {$whereSql} {$orderBySql} LIMIT %d OFFSET %d";
+        $prepareArgs[] = $perPage;
+        $prepareArgs[] = $offset;
+
+        $rows = $wpdb->get_results(
+            $wpdb->prepare($sql, ...$prepareArgs),
+            ARRAY_A
+        );
+
+        return array_map(fn(array $row): Publication => Publication::fromArray($row), $rows ?: []);
+    }
+
+    public function countForAdmin(string $search = '', ?string $status = null): int
+    {
+        global $wpdb;
+
+        $table = $this->tableName();
+        [$whereSql, $prepareArgs] = $this->adminListWhereClause($search, $status);
+
+        $sql = "SELECT COUNT(*) FROM {$table} WHERE {$whereSql}";
+
+        if ($prepareArgs === []) {
+            return (int) $wpdb->get_var($sql);
+        }
+
+        return (int) $wpdb->get_var($wpdb->prepare($sql, ...$prepareArgs));
+    }
+
+    /**
+     * @return array{0: string, 1: list<string|int>}
+     */
+    private function adminListWhereClause(string $search, ?string $status): array
+    {
+        global $wpdb;
+
+        $parts = ['1=1'];
+        $args = [];
+
+        if ($status === 'active' || $status === 'inactive') {
+            $parts[] = 'status = %s';
+            $args[] = $status;
+        }
+
+        if ($search !== '') {
+            $like = '%' . $wpdb->esc_like($search) . '%';
+            $parts[] = '(title LIKE %s OR COALESCE(journal, \'\') LIKE %s OR slug LIKE %s OR COALESCE(doi, \'\') LIKE %s OR external_id LIKE %s)';
+            $args[] = $like;
+            $args[] = $like;
+            $args[] = $like;
+            $args[] = $like;
+            $args[] = $like;
+        }
+
+        return [implode(' AND ', $parts), $args];
+    }
+
+    /**
+     * Whitelist-only ORDER BY fragment for admin list.
+     */
+    private function adminOrderByClause(string $orderby, string $order): string
+    {
+        $dir = strtolower($order) === 'desc' ? 'DESC' : 'ASC';
+
+        switch ($orderby) {
+            case 'title':
+                return "ORDER BY title {$dir}";
+            case 'journal':
+                return "ORDER BY (CASE WHEN journal IS NULL OR TRIM(journal) = '' THEN 1 ELSE 0 END) ASC, journal {$dir}";
+            case 'slug':
+                return "ORDER BY slug {$dir}";
+            case 'doi':
+                return "ORDER BY (CASE WHEN doi IS NULL OR TRIM(doi) = '' THEN 1 ELSE 0 END) ASC, doi {$dir}";
+            case 'publication_date':
+            default:
+                return "ORDER BY (CASE WHEN publication_date IS NULL OR TRIM(publication_date) = '' THEN 1 ELSE 0 END) ASC, publication_date {$dir}, title ASC";
+        }
+    }
 }

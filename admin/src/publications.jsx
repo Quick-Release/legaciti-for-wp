@@ -85,20 +85,16 @@ function SortableColumnHeader({ label, column, sortBy, sortDir, onSort, isPrimar
   );
 }
 
-function profileUrlForNickname(nickname) {
-  const screen = window.legacitiPeopleScreen;
-  if (!screen?.homeUrl) {
+function publicationProfileUrl(slug) {
+  const screen = window.legacitiPublicationsScreen;
+  if (!screen?.homeUrl || !slug) {
     return '#';
   }
   const base = screen.homeUrl.replace(/\/$/, '');
-  const pre = screen.urlPrefix || '';
-  if (pre) {
-    return `${base}/${pre}/${nickname}/`;
-  }
-  return `${base}/${nickname}/`;
+  return `${base}/publication/${slug}/`;
 }
 
-function PeopleApp() {
+function PublicationsApp() {
   const [items, setItems] = useState([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
@@ -106,8 +102,8 @@ function PeopleApp() {
   const [searchInput, setSearchInput] = useState('');
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState('');
-  const [orderBy, setOrderBy] = useState('title');
-  const [orderDir, setOrderDir] = useState('asc');
+  const [orderBy, setOrderBy] = useState('publication_date');
+  const [orderDir, setOrderDir] = useState('desc');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [syncing, setSyncing] = useState(false);
@@ -132,7 +128,7 @@ function PeopleApp() {
     params.set('orderby', orderBy);
     params.set('order', orderDir);
 
-    apiFetch({ path: `/legaciti/v1/admin/people?${params.toString()}` })
+    apiFetch({ path: `/legaciti/v1/admin/publications?${params.toString()}` })
       .then((response) => {
         setItems(response.data || []);
         setTotal(response.total ?? 0);
@@ -140,7 +136,7 @@ function PeopleApp() {
         setLoading(false);
       })
       .catch((err) => {
-        setError(err.message || 'Failed to load people.');
+        setError(err.message || 'Failed to load publications.');
         setLoading(false);
       });
   }, [page, search, status, orderBy, orderDir]);
@@ -160,7 +156,7 @@ function PeopleApp() {
       setOrderDir((d) => (d === 'asc' ? 'desc' : 'asc'));
     } else {
       setOrderBy(column);
-      setOrderDir('asc');
+      setOrderDir(column === 'publication_date' ? 'desc' : 'asc');
     }
   };
 
@@ -169,7 +165,7 @@ function PeopleApp() {
     setConnectivity(null);
     setError(null);
 
-    apiFetch({ path: '/legaciti/v1/admin/people/connectivity' })
+    apiFetch({ path: '/legaciti/v1/admin/publications/connectivity' })
       .then((result) => {
         setConnectivity({
           level: result.level || (result.ok ? 'success' : 'error'),
@@ -199,18 +195,21 @@ function PeopleApp() {
     setError(null);
 
     apiFetch({
-      path: '/legaciti/v1/admin/people/sync',
+      path: '/legaciti/v1/admin/publications/sync',
       method: 'POST',
     })
       .then((result) => {
         const parts = [];
-        if (typeof result.people_synced === 'number') {
+        if (typeof result.publications_synced === 'number') {
           parts.push(
-            `${result.people_synced} ${result.people_synced === 1 ? 'person' : 'people'} updated`,
+            `${result.publications_synced} publication${result.publications_synced === 1 ? '' : 's'} updated`,
           );
         }
-        if (typeof result.people_deactivated === 'number' && result.people_deactivated > 0) {
-          parts.push(`${result.people_deactivated} marked inactive (removed from API)`);
+        if (typeof result.relations_synced === 'number' && result.relations_synced > 0) {
+          parts.push(`${result.relations_synced} author link${result.relations_synced === 1 ? '' : 's'} synced`);
+        }
+        if (typeof result.publications_deactivated === 'number' && result.publications_deactivated > 0) {
+          parts.push(`${result.publications_deactivated} marked inactive (removed from API)`);
         }
         if (Array.isArray(result.errors) && result.errors.length > 0) {
           setError(result.errors.join(' '));
@@ -238,7 +237,7 @@ function PeopleApp() {
     <div style={{ padding: '12px 0' }}>
       <Flex gap={3} align="center" style={{ marginBottom: '16px', flexWrap: 'wrap' }}>
         <h1 className="wp-heading-inline" style={{ margin: 0 }}>
-          People
+          Publications
         </h1>
         <Button variant="secondary" onClick={handleSync} isBusy={syncing} disabled={syncing || checkBusy || loading}>
           Sync
@@ -253,9 +252,9 @@ function PeopleApp() {
         </Button>
       </Flex>
       <p className="description" style={{ marginBottom: '20px' }}>
-        Everyone synced from Legaciti into this site (including inactive records). Sync pulls all people from the
-        Legaciti API using your saved installation credentials (Settings). Use <strong>Check connectivity</strong> to
-        verify DNS/HTTPS from this server (the same check runs inside the WordPress/PHP container).
+        Publications synced from api.legaciti.org into this site&apos;s database (including inactive rows when they
+        disappear upstream). Sync uses your saved installation credentials under Settings. Author links are stored when
+        the related people exist locally—sync People first if links are missing.
       </p>
 
       {connectivity && (
@@ -312,7 +311,7 @@ function PeopleApp() {
                     handleSearch();
                   }
                 }}
-                placeholder="Name, nickname, or email"
+                placeholder="Title, journal, slug, DOI, external id"
               />
             </FlexItem>
             <FlexItem style={{ flex: '0 1 200px', minWidth: '160px' }}>
@@ -339,7 +338,7 @@ function PeopleApp() {
         <CardHeader>
           <Flex justify="space-between" align="center" style={{ width: '100%' }}>
             <span>
-              <strong>{total}</strong> {total === 1 ? 'person' : 'people'}
+              <strong>{total}</strong> {total === 1 ? 'publication' : 'publications'}
             </span>
             {loading && <Spinner />}
           </Flex>
@@ -354,60 +353,66 @@ function PeopleApp() {
               <thead>
                 <tr>
                   <SortableColumnHeader
-                    label="Name"
-                    column="name"
+                    label="Title"
+                    column="title"
                     sortBy={orderBy}
                     sortDir={orderDir}
                     onSort={handleSortColumn}
                     isPrimary
                   />
                   <SortableColumnHeader
-                    label="Nickname"
-                    column="nickname"
+                    label="Slug"
+                    column="slug"
                     sortBy={orderBy}
                     sortDir={orderDir}
                     onSort={handleSortColumn}
                   />
                   <SortableColumnHeader
-                    label="Title"
-                    column="title"
+                    label="Journal"
+                    column="journal"
                     sortBy={orderBy}
                     sortDir={orderDir}
                     onSort={handleSortColumn}
                   />
                   <SortableColumnHeader
-                    label="Email"
-                    column="email"
+                    label="Date"
+                    column="publication_date"
                     sortBy={orderBy}
                     sortDir={orderDir}
                     onSort={handleSortColumn}
                   />
-                  <th scope="col">Public profile</th>
+                  <SortableColumnHeader
+                    label="DOI"
+                    column="doi"
+                    sortBy={orderBy}
+                    sortDir={orderDir}
+                    onSort={handleSortColumn}
+                  />
+                  <th scope="col">Status</th>
+                  <th scope="col">Public page</th>
                 </tr>
               </thead>
               <tbody>
                 {items.length === 0 ? (
                   <tr>
-                    <td colSpan={5} style={{ padding: '16px' }}>
-                      No people synced yet. Click Sync above or run a full sync from Settings.
+                    <td colSpan={7} style={{ padding: '16px' }}>
+                      No publications synced yet. Click Sync above or run a full sync from Settings.
                     </td>
                   </tr>
                 ) : (
                   items.map((row) => (
                     <tr key={row.id}>
                       <td className="column-primary">
-                        <strong>{row.full_name || '—'}</strong>
+                        <strong>{row.title || '—'}</strong>
                       </td>
-                      <td>{row.nickname || '—'}</td>
-                      <td>{row.title || '—'}</td>
-                      <td>{row.email || '—'}</td>
+                      <td>{row.slug || '—'}</td>
+                      <td>{row.journal || '—'}</td>
+                      <td>{row.publication_date || '—'}</td>
+                      <td style={{ wordBreak: 'break-all' }}>{row.doi || '—'}</td>
+                      <td>{row.status || '—'}</td>
                       <td>
-                        {row.status === 'active' && row.nickname ? (
-                          <a
-                            href={profileUrlForNickname(row.nickname)}
-                            target="_blank"
-                            rel="noreferrer"
-                          >
+                        {row.status === 'active' && row.slug ? (
+                          <a href={publicationProfileUrl(row.slug)} target="_blank" rel="noreferrer">
                             View
                           </a>
                         ) : (
@@ -448,4 +453,4 @@ function PeopleApp() {
   );
 }
 
-render(<PeopleApp />, document.getElementById('legaciti-people'));
+render(<PublicationsApp />, document.getElementById('legaciti-publications'));

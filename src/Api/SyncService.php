@@ -72,6 +72,32 @@ final class SyncService
         return $result;
     }
 
+    /**
+     * Fetch all publications from the Legaciti Consumer API and upsert into WordPress (including author links when people exist locally).
+     */
+    public function syncPublicationsOnly(): SyncResult
+    {
+        if (! $this->acquireLock()) {
+            PluginLog::info('sync', 'Publications-only sync skipped — lock held', ['mode' => 'publications']);
+
+            return new SyncResult(errors: ['Sync already in progress.']);
+        }
+
+        try {
+            $result = $this->doSyncPublicationsOnly();
+        } catch (\Throwable $e) {
+            PluginLog::exception('sync', 'Publications-only sync threw', $e, ['mode' => 'publications']);
+            $result = (new SyncResult())->withError($e->getMessage());
+        } finally {
+            $this->releaseLock();
+        }
+
+        $this->updateLastSyncTimestamp();
+        $this->logSyncResult('publications', $result);
+
+        return $result;
+    }
+
     private function doSync(): SyncResult
     {
         $result = new SyncResult();
@@ -120,9 +146,10 @@ final class SyncService
         }
 
         $pubPage = 1;
-        do {
+        $hasMorePubs = true;
+        while ($hasMorePubs) {
             try {
-                $response = $this->client->getPublications($pubPage);
+                $response = $this->client->getPublications($pubPage, 100);
                 $publications = $response['data'] ?? $response;
 
                 if (! is_array($publications)) {
@@ -161,12 +188,12 @@ final class SyncService
                 }
 
                 $pubPage++;
-                $hasMore = ($response['next_page_url'] ?? null) !== null;
+                $hasMorePubs = $this->publicationsHasNextPage($response, $pubPage);
             } catch (\Throwable $e) {
                 $result = $result->withError("Publications page {$pubPage}: {$e->getMessage()}");
                 break;
             }
-        } while ($hasMore ?? false);
+        }
 
         $peopleDeactivated = $this->personRepo->markInactiveExcept($activeExternalPersonIds);
         $publicationsDeactivated = $this->publicationRepo->markInactiveExcept($activeExternalPublicationIds);
@@ -237,6 +264,89 @@ final class SyncService
             publicationsDeactivated: 0,
             errors: $result->errors,
         );
+    }
+
+    private function doSyncPublicationsOnly(): SyncResult
+    {
+        $result = new SyncResult();
+        $activeExternalPublicationIds = [];
+
+        $pubPage = 1;
+        $hasMorePubs = true;
+        while ($hasMorePubs) {
+            try {
+                $response = $this->client->getPublications($pubPage, 100);
+                $publications = $response['data'] ?? $response;
+
+                if (! is_array($publications)) {
+                    break;
+                }
+
+                foreach ($publications as $pubData) {
+                    if (! is_array($pubData)) {
+                        continue;
+                    }
+                    $extId = isset($pubData['external_id']) ? (string) $pubData['external_id'] : 'unknown';
+                    try {
+                        $pubId = $this->publicationRepo->upsert($pubData);
+                        $activeExternalPublicationIds[] = $pubData['external_id'];
+
+                        $relations = $pubData['people'] ?? [];
+                        if (is_array($relations) && count($relations) > 0) {
+                            $this->syncPublicationRelations($pubId, $relations);
+                            $result = new SyncResult(
+                                peopleSynced: 0,
+                                publicationsSynced: $result->publicationsSynced + 1,
+                                relationsSynced: $result->relationsSynced + count($relations),
+                                peopleDeactivated: 0,
+                                publicationsDeactivated: $result->publicationsDeactivated,
+                                errors: $result->errors,
+                            );
+                        } else {
+                            $result = new SyncResult(
+                                peopleSynced: 0,
+                                publicationsSynced: $result->publicationsSynced + 1,
+                                relationsSynced: $result->relationsSynced,
+                                peopleDeactivated: 0,
+                                publicationsDeactivated: $result->publicationsDeactivated,
+                                errors: $result->errors,
+                            );
+                        }
+                    } catch (\Throwable $e) {
+                        $result = $result->withError("Publication {$extId}: {$e->getMessage()}");
+                    }
+                }
+
+                $pubPage++;
+                $hasMorePubs = $this->publicationsHasNextPage($response, $pubPage);
+            } catch (\Throwable $e) {
+                $result = $result->withError("Publications page {$pubPage}: {$e->getMessage()}");
+                break;
+            }
+        }
+
+        $publicationsDeactivated = $this->publicationRepo->markInactiveExcept($activeExternalPublicationIds);
+
+        return new SyncResult(
+            peopleSynced: 0,
+            publicationsSynced: $result->publicationsSynced,
+            relationsSynced: $result->relationsSynced,
+            peopleDeactivated: 0,
+            publicationsDeactivated: $publicationsDeactivated,
+            errors: $result->errors,
+        );
+    }
+
+    /**
+     * @param array<string, mixed> $response
+     */
+    private function publicationsHasNextPage(array $response, int $nextPage): bool
+    {
+        if (isset($response['pages']) && is_numeric($response['pages'])) {
+            return $nextPage <= (int) $response['pages'];
+        }
+
+        return ($response['next_page_url'] ?? null) !== null;
     }
 
     /**

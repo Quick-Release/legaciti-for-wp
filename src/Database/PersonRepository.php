@@ -162,10 +162,18 @@ final class PersonRepository
     /**
      * All synced people for admin (active and inactive), with optional status filter and search.
      *
+     * @param 'name'|'nickname'|'title'|'email' $orderby
+     * @param 'asc'|'desc' $order
      * @return list<Person>
      */
-    public function findForAdmin(int $page, int $perPage, string $search = '', ?string $status = null): array
-    {
+    public function findForAdmin(
+        int $page,
+        int $perPage,
+        string $search = '',
+        ?string $status = null,
+        string $orderby = 'title',
+        string $order = 'asc',
+    ): array {
         global $wpdb;
 
         $offset = ($page - 1) * $perPage;
@@ -173,7 +181,8 @@ final class PersonRepository
 
         [$whereSql, $prepareArgs] = $this->adminListWhereClause($search, $status);
 
-        $sql = "SELECT * FROM {$table} WHERE {$whereSql} ORDER BY last_name, first_name LIMIT %d OFFSET %d";
+        $orderBySql = $this->adminOrderByClause($orderby, $order);
+        $sql = "SELECT * FROM {$table} WHERE {$whereSql} {$orderBySql} LIMIT %d OFFSET %d";
         $prepareArgs[] = $perPage;
         $prepareArgs[] = $offset;
 
@@ -226,5 +235,25 @@ final class PersonRepository
         }
 
         return [implode(' AND ', $parts), $args];
+    }
+
+    /**
+     * Whitelist-only ORDER BY fragment for admin list (column identifiers are fixed; direction is asc|desc only).
+     */
+    private function adminOrderByClause(string $orderby, string $order): string
+    {
+        $dir = strtolower($order) === 'desc' ? 'DESC' : 'ASC';
+
+        switch ($orderby) {
+            case 'name':
+                return "ORDER BY last_name {$dir}, first_name {$dir}";
+            case 'nickname':
+                return "ORDER BY nickname {$dir}";
+            case 'email':
+                return "ORDER BY (CASE WHEN email IS NULL OR TRIM(email) = '' THEN 1 ELSE 0 END) ASC, email {$dir}";
+            case 'title':
+            default:
+                return "ORDER BY (CASE WHEN title IS NULL OR TRIM(title) = '' THEN 1 ELSE 0 END) ASC, title {$dir}, last_name ASC, first_name ASC";
+        }
     }
 }

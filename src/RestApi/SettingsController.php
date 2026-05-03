@@ -114,7 +114,14 @@ final class SettingsController
             'remove_on_uninstall' => $request->get_param('remove_on_uninstall') ?? ($existing['remove_on_uninstall'] ?? false),
         ]);
 
+        $oldPrefix = trim((string) ($existing['url_prefix'] ?? ''), '/');
+        $newPrefix = trim((string) ($updated['url_prefix'] ?? ''), '/');
+
         update_option('legaciti_settings', $updated);
+
+        if ($oldPrefix !== $newPrefix) {
+            flush_rewrite_rules();
+        }
 
         PluginLog::info('settings', 'Plugin settings updated', [
             'sync_frequency' => $updated['sync_frequency'] ?? null,

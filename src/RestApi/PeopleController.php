@@ -71,6 +71,14 @@ final class PeopleController
                         'default' => '',
                         'sanitize_callback' => 'sanitize_text_field',
                     ],
+                    'orderby' => [
+                        'default' => 'title',
+                        'sanitize_callback' => 'sanitize_text_field',
+                    ],
+                    'order' => [
+                        'default' => 'asc',
+                        'sanitize_callback' => 'sanitize_text_field',
+                    ],
                 ],
             ],
         ]);
@@ -132,7 +140,15 @@ final class PeopleController
             $status = $statusParam;
         }
 
-        $people = $this->personRepo->findForAdmin($page, $perPage, $search, $status);
+        $orderbyRaw = (string) $request->get_param('orderby');
+        $orderby = in_array($orderbyRaw, ['name', 'nickname', 'title', 'email'], true)
+            ? $orderbyRaw
+            : 'title';
+
+        $orderRaw = strtolower((string) $request->get_param('order'));
+        $order = $orderRaw === 'desc' ? 'desc' : 'asc';
+
+        $people = $this->personRepo->findForAdmin($page, $perPage, $search, $status, $orderby, $order);
         $total = $this->personRepo->countForAdmin($search, $status);
 
         $data = array_map(fn($person): array => $person->toArray(), $people);

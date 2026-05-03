@@ -332,9 +332,134 @@ final class Client
         ]);
     }
 
-    public function getPublications(int $page = 1): array
+    /**
+     * List publications from the Consumer API (paginated).
+     *
+     * @return array<string, mixed>
+     */
+    public function getPublications(int $page = 1, int $perPage = 100): array
     {
-        return $this->get('/publications', ['page' => $page]);
+        $perPage = min(100, max(1, $perPage));
+
+        return $this->get('v1/publications', [
+            'page' => $page,
+            'per_page' => $perPage,
+        ]);
+    }
+
+    /**
+     * Probe reachability of the publications Consumer API route using saved Settings.
+     *
+     * @return array{
+     *   ok: bool,
+     *   level: string,
+     *   message: string,
+     *   http_code: int|null,
+     *   url: string,
+     *   used_api_key: bool
+     * }
+     */
+    public function checkPublicationsConnectivityFromSettings(): array
+    {
+        $settings = $this->getSettings();
+        $baseUrl = rtrim($settings['api_base_url'] ?? 'https://api.legaciti.org', '/');
+        $key = (string) ($settings['api_key'] ?? '');
+        $url = $baseUrl . '/v1/publications?' . http_build_query([
+            'page' => 1,
+            'per_page' => 1,
+        ]);
+
+        $headers = $this->buildHeaders($key);
+        $usedKey = $key !== '';
+
+        $response = wp_remote_get($url, [
+            'timeout' => 20,
+            'headers' => $headers,
+        ]);
+
+        if (is_wp_error($response)) {
+            return [
+                'ok' => false,
+                'level' => 'error',
+                'message' => $this->explainTransportError($response),
+                'http_code' => null,
+                'url' => $url,
+                'used_api_key' => $usedKey,
+            ];
+        }
+
+        $code = (int) wp_remote_retrieve_response_code($response);
+
+        if ($code >= 200 && $code < 300) {
+            return [
+                'ok' => true,
+                'level' => 'success',
+                'message' => 'Connection OK. The API answered with HTTP ' . $code . ' (saved key can read /v1/publications).',
+                'http_code' => $code,
+                'url' => $url,
+                'used_api_key' => $usedKey,
+            ];
+        }
+
+        if ($code === 401 || $code === 403) {
+            $body = wp_remote_retrieve_body($response);
+            $parsedError = $this->parseErrorBody($body);
+
+            $hint = $usedKey
+                ? ' ' . $this->explainAuthFailure($code, $parsedError['code'])
+                : ' Save an API key under Legaciti → Settings—the route requires authentication.';
+
+            return [
+                'ok' => true,
+                'level' => 'warning',
+                'message' => 'Host is reachable (HTTP ' . $code . ').' . $hint,
+                'http_code' => $code,
+                'url' => $url,
+                'used_api_key' => $usedKey,
+            ];
+        }
+
+        if ($code === 404) {
+            return [
+                'ok' => false,
+                'level' => 'error',
+                'message' => 'Connected but got HTTP 404 for /v1/publications. Fix the API base URL under Settings.',
+                'http_code' => $code,
+                'url' => $url,
+                'used_api_key' => $usedKey,
+            ];
+        }
+
+        if ($code === 429) {
+            return [
+                'ok' => true,
+                'level' => 'warning',
+                'message' => 'Server responded with HTTP 429 (rate limited). Network path is fine—retry later.',
+                'http_code' => $code,
+                'url' => $url,
+                'used_api_key' => $usedKey,
+            ];
+        }
+
+        if ($code >= 500) {
+            return [
+                'ok' => false,
+                'level' => 'error',
+                'message' => 'Server error HTTP ' . $code . '. The host answered; the API may be unavailable.',
+                'http_code' => $code,
+                'url' => $url,
+                'used_api_key' => $usedKey,
+            ];
+        }
+
+        return [
+            'ok' => false,
+            'level' => 'error',
+            'message' => 'Unexpected HTTP ' . $code . ' from the API.',
+            'http_code' => $code,
+            'url' => $url,
+            'used_api_key' => $usedKey,
+        ];
     }
 
     /**

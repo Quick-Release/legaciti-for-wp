@@ -7,7 +7,6 @@ namespace LegacitiForWp\Routing;
 use LegacitiForWp\Database\PersonRepository;
 use LegacitiForWp\Debug\PluginLog;
 use LegacitiForWp\Database\PublicationRepository;
-use LegacitiForWp\Database\RelationRepository;
 
 final class Router
 {
@@ -22,6 +21,7 @@ final class Router
         add_action('init', [$this, 'addRewriteRules']);
         add_filter('query_vars', [$this, 'registerQueryVars']);
         add_filter('template_include', [$this, 'resolveTemplate']);
+        add_filter('pre_get_document_title', [$this, 'filterPersonDocumentTitle']);
     }
 
     public function addRewriteRules(): void
@@ -90,6 +90,24 @@ final class Router
         }
 
         return $template;
+    }
+
+    public function filterPersonDocumentTitle(string $title): string
+    {
+        $nickname = get_query_var('legaciti_person');
+        if ($nickname === '' || ! is_string($nickname)) {
+            return $title;
+        }
+
+        $person = $this->personRepo->findByNickname($nickname);
+        if ($person === null) {
+            return $title;
+        }
+
+        $name = $person->fullName();
+        $site = get_bloginfo('name', 'display');
+
+        return $site !== '' ? $name . ' – ' . $site : $name;
     }
 
     private function locateTemplate(string $templateName): string

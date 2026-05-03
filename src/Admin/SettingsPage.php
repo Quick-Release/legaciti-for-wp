@@ -44,6 +44,15 @@ final class SettingsPage
 
         add_submenu_page(
             parent_slug: 'legaciti-dashboard',
+            page_title: __('Publications', 'legaciti-for-wp'),
+            menu_title: __('Publications', 'legaciti-for-wp'),
+            capability: 'manage_options',
+            menu_slug: 'legaciti-publications',
+            callback: [$this, 'renderPublications'],
+        );
+
+        add_submenu_page(
+            parent_slug: 'legaciti-dashboard',
             page_title: __('Errors', 'legaciti-for-wp'),
             menu_title: __('Errors', 'legaciti-for-wp'),
             capability: 'manage_options',
@@ -64,7 +73,6 @@ final class SettingsPage
     public function renderDashboard(): void
     {
         echo '<div class="wrap">';
-        echo '<p><strong>' . esc_html__('Hello world — Dashboard', 'legaciti-for-wp') . '</strong></p>';
         echo '<div id="legaciti-dashboard"></div>';
         echo '</div>';
     }
@@ -72,8 +80,14 @@ final class SettingsPage
     public function renderPeople(): void
     {
         echo '<div class="wrap">';
-        echo '<p><strong>' . esc_html__('Hello world — People', 'legaciti-for-wp') . '</strong></p>';
         echo '<div id="legaciti-people"></div>';
+        echo '</div>';
+    }
+
+    public function renderPublications(): void
+    {
+        echo '<div class="wrap">';
+        echo '<div id="legaciti-publications"></div>';
         echo '</div>';
     }
 
@@ -88,7 +102,6 @@ final class SettingsPage
     public function renderSettings(): void
     {
         echo '<div class="wrap">';
-        echo '<p><strong>' . esc_html__('Hello world — Settings', 'legaciti-for-wp') . '</strong></p>';
         echo '<div id="legaciti-settings"></div>';
         echo '</div>';
     }
@@ -106,6 +119,7 @@ final class SettingsPage
         $pageToEntry = [
             'legaciti-dashboard' => 'dashboard',
             'legaciti-people' => 'people',
+            'legaciti-publications' => 'publications',
             'legaciti-errors' => 'errors',
             'legaciti-settings' => 'settings',
         ];
@@ -153,6 +167,16 @@ final class SettingsPage
                 l10n: [
                     'homeUrl' => untrailingslashit(home_url()),
                     'urlPrefix' => $prefix,
+                ],
+            );
+        }
+
+        if ($entryName === 'publications') {
+            wp_localize_script(
+                handle: 'legaciti-publications',
+                object_name: 'legacitiPublicationsScreen',
+                l10n: [
+                    'homeUrl' => untrailingslashit(home_url()),
                 ],
             );
         }

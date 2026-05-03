@@ -9,6 +9,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const entries = {
   dashboard: path.resolve(__dirname, 'src/dashboard.jsx'),
   people: path.resolve(__dirname, 'src/people.jsx'),
+  publications: path.resolve(__dirname, 'src/publications.jsx'),
   errors: path.resolve(__dirname, 'src/errors.jsx'),
   settings: path.resolve(__dirname, 'src/settings.jsx'),
 };
